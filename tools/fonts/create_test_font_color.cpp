@@ -26,8 +26,11 @@
 #include "tools/fonts/FontToolUtils.h"
 #include "modules/skparagraph/src/ParagraphBuilderImpl.h"
 #include "modules/skparagraph/src/Run.h"
+#include "modules/skparagraph/src/TextWrapper.h"
+#include "modules/skparagraph/src/ParagraphImpl.h"
 #include "modules/skparagraph/include/FontCollection.h"
 #include "modules/skparagraph/include/ParagraphStyle.h"
+#include "modules/skparagraph/include/Paragraph.h"
 #include "Windows.h"
 #include <cmath>
 
@@ -105,13 +108,13 @@ static HWND MakeWindow(int w, int h)
         wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
         wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
         wcex.lpszMenuName = nullptr;
-        wcex.lpszClassName = g_sWindowClass;
+        wcex.lpszClassName = (const WCHAR*)g_sWindowClass;
         wcex.hIconSm = LoadIcon(wcex.hInstance, (LPCTSTR)IDI_WINLOGO);
 
         if (RegisterClassEx(&wcex)) wcexInit = true;
     }
 
-    result = CreateWindow(g_sWindowClass,
+    result = CreateWindow((const WCHAR*)g_sWindowClass,
                           nullptr,
                           WS_OVERLAPPEDWINDOW,
                           0,
@@ -167,13 +170,12 @@ static void DrawString(SkCanvas* canvas, SkFont* font, SkPaint* paint, const cha
 
 static const char* MaxStr(const char** texts, size_t count) 
 { 
-    if (count == 0 || !texts) return nullptr;
+    if (count == 0 || !texts) 
+        return nullptr;
 
     const char* result = texts[0];
     for (size_t i = 0; i < count; ++i)
-    {
         result = strlen(result) < strlen(texts[i]) ? texts[i] : result;
-    }
 
     return result; 
 }
@@ -185,7 +187,7 @@ static void DrawColor(SkCanvas* canvas, SkColor4f color)
     canvas->clear(color);
 }
 
-static void DrawEverything(SkCanvas* canvas) 
+static void DrawEverything(SkCanvas* canvas, const char** texts, size_t textCount) 
 {
     const auto timesTypeface = ToolUtils::CreateTestTypeface("Times", SkFontStyle{});
     const auto georgiaTypeface = ToolUtils::CreateTestTypeface("Georgia", SkFontStyle{});
@@ -194,7 +196,6 @@ static void DrawEverything(SkCanvas* canvas)
     constexpr SkScalar fontStartY = 50.0f;
     SkFont timesFont(timesTypeface, fontHeight);
     SkFont georgiaFont(georgiaTypeface, fontHeight);
-    const char* texts[] = {"Vihma on.", "Hello Vihma on bigass world.", "Bigass and fatass."};
 
     SkPaint paint;
     paint.setAntiAlias(true);
@@ -205,31 +206,39 @@ static void DrawEverything(SkCanvas* canvas)
     DrawString(canvas, &timesFont, &paint, texts[0], fontStartX, fontStartY + fontHeight);
     DrawString(canvas, &timesFont, &paint, texts[1], fontStartX, fontStartY + fontHeight * 2);
 
-    const char* text = MaxStr(texts, ArrayCount(texts));
+    const char* text = MaxStr(texts, textCount);
     SkScalar xOffset = timesFont.measureText(text, strlen(text), SkTextEncoding::kUTF8);
 
     // Add a gap for the next text column
     xOffset += fontStartX;
 
-    const char* texts2[] = {"Vihma on.", "Bigass and fatass.", "Lorem lipsum, vihmas bigassum"};
-
     paint.setColor(SkColorSetARGB(0xff, 0xaa, 0x66, 0xbb));
 
-    DrawString(canvas, &georgiaFont, &paint, texts2[2], xOffset, fontStartY);
-    DrawString(canvas, &georgiaFont, &paint, texts2[1], xOffset, fontStartY + fontHeight);
-    DrawString(canvas, &georgiaFont, &paint, texts2[0], xOffset, fontStartY + fontHeight * 2);
+    DrawString(canvas, &georgiaFont, &paint, texts[2], xOffset, fontStartY);
+    DrawString(canvas, &georgiaFont, &paint, texts[1], xOffset, fontStartY + fontHeight);
+    DrawString(canvas, &georgiaFont, &paint, texts[0], xOffset, fontStartY + fontHeight * 2);
 
-    text = MaxStr(texts2, ArrayCount(texts2));
+    text = MaxStr(texts, ArrayCount(texts));
     xOffset = georgiaFont.measureText(text, strlen(text), SkTextEncoding::kUTF8);
 }
 
 
 int main(int argc, char** argv) {
-    constexpr int w = 1270, h = 920;
+    constexpr int w = 800, h = 600;
 
     sk_sp<skia::textlayout::FontCollection> fontCollection = sk_make_sp<skia::textlayout::FontCollection>();
     fontCollection->setDefaultFontManager(ToolUtils::TestFontMgr());
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make({}, fontCollection);
+
+    const char* texts[] = {"Vihma on.", "Hello Vihma on bigass world.", "Bigass and fatass."};
+
+    for (size_t i = 0; i < ArrayCount(texts); ++i) 
+        paraBuilder->addText(texts[i]);
+
+    auto built = paraBuilder->Build();
+    skia::textlayout::ParagraphImpl* paragraph = reinterpret_cast<skia::textlayout::ParagraphImpl*>(built.get());
+
+    paragraph->layout(w);
 
     auto canvas = ResizeFrameBuffer(w, h);
     if (!globalSurfaceMemory.get()) return -1;
@@ -247,7 +256,7 @@ int main(int argc, char** argv) {
 		}
 
         DrawColor(canvas.get(), SkColors::kLtGray);
-        DrawEverything(canvas.get());
+        DrawEverything(canvas.get(), texts, ArrayCount(texts));
         SwapFrameBuffers(window);
     }
 
