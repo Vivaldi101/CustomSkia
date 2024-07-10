@@ -31,6 +31,7 @@
 #include "modules/skparagraph/include/FontCollection.h"
 #include "modules/skparagraph/include/ParagraphStyle.h"
 #include "modules/skparagraph/include/Paragraph.h"
+#include "modules/skparagraph/include/TextStyle.h"
 #include "Windows.h"
 #include <cmath>
 
@@ -38,10 +39,13 @@
 
 #if defined(SK_ENABLE_SVG)
 
+#define ArrayCount(a) sizeof((a)) / sizeof(*(a))
+
 static SkAutoMalloc globalSurfaceMemory;
 const char* g_sWindowClass = "FirstSkiaApp";
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    LRESULT result = 0;
 	bool eventHandled = false;
 	switch (message)
 	{
@@ -85,6 +89,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	case WM_MOUSEWHEEL:
 		break;
+    default: 
+        break;
 	}
 
 	return DefWindowProc(hWnd, message, wParam, lParam);
@@ -108,13 +114,13 @@ static HWND MakeWindow(int w, int h)
         wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
         wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
         wcex.lpszMenuName = nullptr;
-        wcex.lpszClassName = (const WCHAR*)g_sWindowClass;
+        wcex.lpszClassName = g_sWindowClass;
         wcex.hIconSm = LoadIcon(wcex.hInstance, (LPCTSTR)IDI_WINLOGO);
 
         if (RegisterClassEx(&wcex)) wcexInit = true;
     }
 
-    result = CreateWindow((const WCHAR*)g_sWindowClass,
+    result = CreateWindow(g_sWindowClass,
                           nullptr,
                           WS_OVERLAPPEDWINDOW,
                           0,
@@ -180,7 +186,6 @@ static const char* MaxStr(const char** texts, size_t count)
     return result; 
 }
 
-#define ArrayCount(a) sizeof((a)) / sizeof(*(a))
 
 static void DrawColor(SkCanvas* canvas, SkColor4f color) 
 {
@@ -222,6 +227,27 @@ static void DrawEverything(SkCanvas* canvas, const char** texts, size_t textCoun
     xOffset = georgiaFont.measureText(text, strlen(text), SkTextEncoding::kUTF8);
 }
 
+struct Area 
+{
+    int width;
+    int height;
+};
+
+static Area GetClientWindowArea(HWND window) 
+{
+    Area result = {};
+
+    RECT clientRectangle = {};
+    GetClientRect(window, &clientRectangle);
+
+    int width = clientRectangle.right - clientRectangle.left;
+    int height = clientRectangle.bottom - clientRectangle.top;
+
+    result.width = width;
+    result.height = height;
+
+    return result;
+}
 
 int main(int argc, char** argv) {
     constexpr int w = 800, h = 600;
@@ -230,7 +256,7 @@ int main(int argc, char** argv) {
     fontCollection->setDefaultFontManager(ToolUtils::TestFontMgr());
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make({}, fontCollection);
 
-    const char* texts[] = {"Vihma on.", "Hello Vihma on bigass world.", "Bigass and fatass."};
+    const char* texts[] = {"Vihma on. ", "Hello Vihma on big\u00ADass world. ", "Bigass and fatass. "};
 
     for (size_t i = 0; i < ArrayCount(texts); ++i) 
         paraBuilder->addText(texts[i]);
@@ -238,12 +264,14 @@ int main(int argc, char** argv) {
     auto built = paraBuilder->Build();
     skia::textlayout::ParagraphImpl* paragraph = reinterpret_cast<skia::textlayout::ParagraphImpl*>(built.get());
 
-    paragraph->layout(w);
-
     auto canvas = ResizeFrameBuffer(w, h);
     if (!globalSurfaceMemory.get()) return -1;
 
-    HWND window = MakeWindow(w, h);
+    RECT windowRectangle = {0, 0, 800, 600};
+
+    AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
+    HWND window = MakeWindow(windowRectangle.right - windowRectangle.left, windowRectangle.bottom - windowRectangle.top);
+
     if (ShowWindow(window, SW_SHOW)) return -1;
 
     MSG msg;
@@ -256,7 +284,12 @@ int main(int argc, char** argv) {
 		}
 
         DrawColor(canvas.get(), SkColors::kLtGray);
-        DrawEverything(canvas.get(), texts, ArrayCount(texts));
+
+        const Area winArea = GetClientWindowArea(window);
+
+        paragraph->layout(winArea.width);
+        paragraph->paint(canvas.get(), 0, 0);
+
         SwapFrameBuffers(window);
     }
 
