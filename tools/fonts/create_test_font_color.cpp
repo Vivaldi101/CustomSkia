@@ -34,12 +34,24 @@
 #include "modules/skparagraph/include/TextStyle.h"
 #include "Windows.h"
 #include <cmath>
+#include <cassert>
 
 #pragma comment(lib, "skparagraph")
 
 #if defined(SK_ENABLE_SVG)
 
 #define ArrayCount(a) sizeof((a)) / sizeof(*(a))
+
+#define Halt __debugbreak();
+
+#define Pre(a) \
+    if (!(a)) Halt
+#define Post(a) \
+    if (!(a)) Halt
+#define Invariant(a) \
+    if (!(a)) Halt
+#define Implies(a, b) (!(a) || (b))
+#define Iff(a, b) ((a) == (b))
 
 void drawTextWithSoftHyphen(SkCanvas* canvas,
                             const char* text,
@@ -263,52 +275,78 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return result;
 }
 
-static void drawTextWithSoftHyphen(SkCanvas* canvas,
+void drawTextWithSoftHyphen(SkCanvas* canvas,
                             const char* text,
                             float x,
                             float y,
                             const SkPaint& paint,
                             const SkFont& font) 
 {
-    SkTextBlobBuilder builder;
+    SkTextBlobBuilder builder{};
     const char* current = text;
-    const char* next;
-
     float currentX = x;
 
-    // Iterate through the text to handle soft hyphens
+    // Allocate a buffer for the maximum possible glyphs
+    size_t maxGlyphs = strlen(text);
+    std::vector<SkGlyphID> glyphs(maxGlyphs);
+
     while (*current) 
     {
-        // Find the next soft hyphen
-        next = strchr(current, '\xAD');
-        if (!next) 
+        // Find the next soft hyphen (utf8: 0xC2 0xAD)
+        const char* start = strchr(current, '\xC2');
+        // No more soft hyphens, draw the rest of the text.
+        if (!start) 
         {
-            // No more soft hyphens, draw the rest of the text
-            int len = strlen(current);
-            auto& runBuffer = builder.allocRun(font, len, currentX, y);
-            font.textToGlyphs(current, len, SkTextEncoding::kUTF8, runBuffer.glyphs, len);
-            currentX += font.measureText(current, len, SkTextEncoding::kUTF8);
-            break;
+            size_t postHyphenGlyphCount = maxGlyphs - (current - text);
+            // Convert post-hyphen text to glyphs
+            int glyphCount = font.textToGlyphs(current,
+                                               postHyphenGlyphCount,
+                                               SkTextEncoding::kUTF8,
+                                               glyphs.data(),
+                                               glyphs.size());
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph indexes
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Draw the rest of the text
+            sk_sp<SkTextBlob> blob = builder.make();
+            canvas->drawTextBlob(blob, 0, 0, paint);
+            return;
+        }
+        //const char* end = strchr(start, '\xAD');
+        const char* end = start + 1;
+        assert(*end == '\xAD');
+
+        const size_t preHyphenGlyphCount = start - current;
+
+        // Convert pre-hyphen text to glyphs
+        int glyphCount = font.textToGlyphs(current, preHyphenGlyphCount, SkTextEncoding::kUTF8, glyphs.data(), glyphs.size());
+
+        // Draw pre-hyphen segment
+        if (glyphCount > 0) 
+        {
+            // Allocate the run buffer
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph indexes
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Advance the x coordinate inside the blob
+            currentX += font.measureText(current, preHyphenGlyphCount, SkTextEncoding::kUTF8);
         }
 
-        // Draw the text before the soft hyphen
-        if (next != current) 
-        {
-            int len = next - current;
-            auto& runBuffer = builder.allocRun(font, len, currentX, y);
-            font.textToGlyphs(current, len, SkTextEncoding::kUTF8, runBuffer.glyphs, len);
-            currentX += font.measureText(current, len, SkTextEncoding::kUTF8);
-        }
 
-        // Draw the soft hyphen as a regular hyphen
+        // Draw the soft-hyphen as a regular hyphen
         {
-            auto& runBuffer = builder.allocRun(font, 1, currentX, y);
-            font.textToGlyphs("-", 1, SkTextEncoding::kUTF8, runBuffer.glyphs, 1);
+            // Convert hyphen into glyph index
+            glyphCount = font.textToGlyphs("-", 1, SkTextEncoding::kUTF8, glyphs.data(), 1);
+            // Allocate the run buffer for the hyphen
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph index for the hyphen
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Advance the x coordinate by one
             currentX += font.measureText("-", 1, SkTextEncoding::kUTF8);
         }
 
         // Move to the next character after the soft hyphen
-        current = next + 1;
+        current = end + 1;
     }
 
     // Draw the text blob
@@ -369,8 +407,9 @@ int main(int argc, char** argv)
     fontCollection->setDefaultFontManager(ToolUtils::TestFontMgr());
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make({}, fontCollection);
 
-    // Notice the soft-hyphen (00AD)
-    const char* texts[] = {"bigggggggggggggggggggggggggggggggg\u00ADass."};
+    const char* texts[] = {"Softtttttttttttttt\u00ADHyphen Hardddddddddd-Hyphen. 123456789111"};
+    //const char* texts[] = {"biggg123456789111"};
+    //const char* texts[] = {"Hello, World!!!"};
     //const char* texts[] = {"Bigasspaska.", "Hello.", "World."};
     //const char* texts[] = {"Bigasspaska."};
 
@@ -403,10 +442,10 @@ int main(int argc, char** argv)
 
         ClearFrameBuffers(canvas.get(), SkColors::kLtGray);
 
-        paragraph->layout(winArea.width);
-        paragraph->paint(canvas.get(), 0, 0);
+        //paragraph->layout(winArea.width);
+        //paragraph->paint(canvas.get(), 0, 0);
 
-        //DrawEverything(canvas.get(), texts, ArrayCount(texts));
+        DrawEverything(canvas.get(), texts, ArrayCount(texts));
 
         SwapFrameBuffers(window);
 
