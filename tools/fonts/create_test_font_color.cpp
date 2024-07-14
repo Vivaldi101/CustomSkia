@@ -74,6 +74,7 @@ struct FiberData
 {
     void* mainFiber;
     void* msgFiber;
+    HWND window;
     bool isQuit;
 };
 
@@ -219,9 +220,9 @@ static void PullFiberState(FiberData* data)
 static void PushFiberState(FiberData* data) 
 {
 }
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK WndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    FiberData* data = (FiberData*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+    FiberData* data = (FiberData*)GetWindowLongPtr(window, GWLP_USERDATA);
 
     LRESULT result = 0;
 
@@ -232,17 +233,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     case WM_ENTERMENULOOP:
     case WM_ENTERSIZEMOVE:
-        SetTimer(hWnd, 1, 1, 0);
+        assert(data->window == window);
+        SetTimer(window, 1, 1, 0);
         break;
     case WM_EXITMENULOOP:
     case WM_EXITSIZEMOVE:
-        KillTimer(hWnd, 1);
+        assert(data->window == window);
+        KillTimer(window, 1);
         break;
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
-		auto hdc = BeginPaint(hWnd, &ps);
-		EndPaint(hWnd, &ps);
+		auto hdc = BeginPaint(window, &ps);
+        assert(data->window == window);
+		EndPaint(window, &ps);
         break;
 	}
     case WM_SIZE: 
@@ -264,12 +268,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_CLOSE:
-		DestroyWindow(hWnd);
+        assert(data->window == window);
+		DestroyWindow(window);
         data->isQuit = true;
 		break;
 
 	default: 
-        result = DefWindowProc(hWnd, message, wParam, lParam);
+        result = DefWindowProc(window, message, wParam, lParam);
 	}
 
 	return result;
@@ -427,7 +432,9 @@ int main(int argc, char** argv)
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
-    HWND window = MakeWindow(windowRectangle.right - windowRectangle.left, windowRectangle.bottom - windowRectangle.top);
+    const HWND window = MakeWindow(windowRectangle.right - windowRectangle.left, windowRectangle.bottom - windowRectangle.top);
+
+    data.window = window;
 
     if (ShowWindow(window, SW_SHOW)) return -1;
 
