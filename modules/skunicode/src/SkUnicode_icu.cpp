@@ -44,6 +44,8 @@
 #include "include/private/base/SkOnce.h"
 #endif
 
+void drawTextWithSoftHyphen(class SkCanvas* canvas, const char* text, float x, float y, const class SkFont& font);
+
 using namespace skia_private;
 
 const SkICULib* SkGetICULib() {

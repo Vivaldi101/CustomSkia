@@ -2,6 +2,18 @@
 #include "modules/skparagraph/src/ParagraphImpl.h"
 #include "modules/skparagraph/src/TextWrapper.h"
 
+#include <Windows.h>
+
+static void DebugMessage(const char* format, ...) 
+{
+    char Temp[1024];
+    va_list Args;
+    va_start(Args, format);
+    wvsprintfA(Temp, format, Args);
+    va_end(Args);
+    OutputDebugStringA(Temp);
+}
+
 namespace skia {
 namespace textlayout {
 

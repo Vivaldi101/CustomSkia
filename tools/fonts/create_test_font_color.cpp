@@ -53,7 +53,7 @@
 #define Implies(a, b) (!(a) || (b))
 #define Iff(a, b) ((a) == (b))
 
-void drawTextWithSoftHyphen(SkCanvas* canvas,
+static void drawTextWithSoftHyphen(SkCanvas* canvas,
                             const char* text,
                             float x,
                             float y,
@@ -275,7 +275,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return result;
 }
 
-void drawTextWithSoftHyphen(SkCanvas* canvas,
+static void drawTextWithSoftHyphen(SkCanvas* canvas,
                             const char* text,
                             float x,
                             float y,
@@ -405,9 +405,13 @@ int main(int argc, char** argv)
 
     sk_sp<skia::textlayout::FontCollection> fontCollection = sk_make_sp<skia::textlayout::FontCollection>();
     fontCollection->setDefaultFontManager(ToolUtils::TestFontMgr());
-    auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make({}, fontCollection);
+    skia::textlayout::ParagraphStyle style{};
+    style.setReplaceTabCharacters(true);
+    auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    const char* texts[] = {"Softtttttttttttttt\u00ADHyphen Hardddddddddd-Hyphen. 123456789111"};
+    const char* texts[] = {"Softtttttttttttttttttttttttttttttttttttttttt\u00ADHyphen"};
+    //texts[4] = (char)194;
+    //texts[5] = (char)173;
     //const char* texts[] = {"biggg123456789111"};
     //const char* texts[] = {"Hello, World!!!"};
     //const char* texts[] = {"Bigasspaska.", "Hello.", "World."};
@@ -419,7 +423,7 @@ int main(int argc, char** argv)
     auto built = paraBuilder->Build();
     skia::textlayout::ParagraphImpl* paragraph = reinterpret_cast<skia::textlayout::ParagraphImpl*>(built.get());
 
-    constexpr int w = 800, h = 600;
+    constexpr int w = 850, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
@@ -442,10 +446,10 @@ int main(int argc, char** argv)
 
         ClearFrameBuffers(canvas.get(), SkColors::kLtGray);
 
-        //paragraph->layout(winArea.width);
-        //paragraph->paint(canvas.get(), 0, 0);
+        paragraph->layout(winArea.width);
+        paragraph->paint(canvas.get(), 0, 0);
 
-        DrawEverything(canvas.get(), texts, ArrayCount(texts));
+        //DrawEverything(canvas.get(), texts, ArrayCount(texts));
 
         SwapFrameBuffers(window);
 

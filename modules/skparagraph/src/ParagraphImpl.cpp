@@ -20,6 +20,7 @@
 #include "modules/skparagraph/src/TextLine.h"
 #include "modules/skparagraph/src/TextWrapper.h"
 #include "modules/skunicode/include/SkUnicode.h"
+#include "tools/fonts/FontToolUtils.h"
 #include "src/base/SkUTF.h"
 #include "src/core/SkTextBlobPriv.h"
 
@@ -27,6 +28,47 @@
 #include <cfloat>
 #include <cmath>
 #include <utility>
+#include <cassert>
+
+#define Halt abort()
+
+#define Pre(a) if(!(a)) Halt
+#define Post(a) if(!(a)) Halt
+#define Invariant(a) if(!(a)) Halt
+#define Implies(a, b) (!(a) || (b))
+#define Iff(a, b) ((a) == (b))
+
+#include <Windows.h>
+
+static void DebugMessage(const char* format, ...) 
+{
+    char Temp[1024];
+    va_list Args;
+    va_start(Args, format);
+    wvsprintfA(Temp, format, Args);
+    va_end(Args);
+    OutputDebugStringA(Temp);
+}
+
+// TODO: Harden indexing with wp-semantics
+SkString ReplaceSoftHyphensWithHard(const char utf8[], int utf8Units) {
+    std::string utf8String{utf8};
+    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
+    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
+
+    const auto shiftIndex = utf8String.find(softHyphen[0]);
+    if (shiftIndex == utf8String.npos || 
+        (uint8_t)utf8String[shiftIndex + 1] != softHyphen[1]) 
+        return SkString{utf8};
+
+    // utf8Units - shiftIndex
+    SkString result{(size_t)utf8Units + 1};   // One more for the extra utf8 unit
+    memcpy(result.data(), utf8, utf8Units);
+    memcpy(result.data() + shiftIndex + 1, utf8 + shiftIndex, utf8Units - shiftIndex);
+    memcpy(result.data() + shiftIndex, hardHyphen, 3);
+
+    return result;
+}
 
 using namespace skia_private;
 
@@ -68,6 +110,84 @@ Paragraph::Paragraph(ParagraphStyle style, sk_sp<FontCollection> fonts)
             , fExceededMaxLines(0)
 {
     SkASSERT(fFontCollection);
+}
+
+void drawTextWithSoftHyphen(SkCanvas* canvas,
+                            const char* text,
+                            float x,
+                            float y,
+                            const SkFont& font) 
+{
+    SkTextBlobBuilder builder{};
+    const char* current = text;
+    float currentX = x;
+
+    // Allocate a buffer for the maximum possible glyphs
+    size_t maxGlyphs = strlen(text);
+    std::vector<SkGlyphID> glyphs(maxGlyphs);
+
+    while (*current) 
+    {
+        // Find the next soft hyphen (utf8: 0xC2 0xAD)
+        const char* start = strchr(current, '\xC2');
+        // No more soft hyphens, draw the rest of the text.
+        if (!start) 
+        {
+            size_t postHyphenGlyphCount = maxGlyphs - (current - text);
+            // Convert post-hyphen text to glyphs
+            int glyphCount = font.textToGlyphs(current,
+                                               postHyphenGlyphCount,
+                                               SkTextEncoding::kUTF8,
+                                               glyphs.data(),
+                                               glyphs.size());
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph indexes
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Draw the rest of the text
+            sk_sp<SkTextBlob> blob = builder.make();
+            //canvas->drawTextBlob(blob, 0, 0, paint);
+            return;
+        }
+        //const char* end = strchr(start, '\xAD');
+        const char* end = start + 1;
+        assert(*end == '\xAD');
+
+        const size_t preHyphenGlyphCount = start - current;
+
+        // Convert pre-hyphen text to glyphs
+        int glyphCount = font.textToGlyphs(current, preHyphenGlyphCount, SkTextEncoding::kUTF8, glyphs.data(), glyphs.size());
+
+        // Draw pre-hyphen segment
+        if (glyphCount > 0) 
+        {
+            // Allocate the run buffer
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph indexes
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Advance the x coordinate inside the blob
+            currentX += font.measureText(current, preHyphenGlyphCount, SkTextEncoding::kUTF8);
+        }
+
+
+        // Draw the soft-hyphen as a regular hyphen
+        {
+            // Convert hyphen into glyph index
+            glyphCount = font.textToGlyphs("-", 1, SkTextEncoding::kUTF8, glyphs.data(), 1);
+            // Allocate the run buffer for the hyphen
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph index for the hyphen
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Advance the x coordinate by one
+            currentX += font.measureText("-", 1, SkTextEncoding::kUTF8);
+        }
+
+        // Move to the next character after the soft hyphen
+        current = end + 1;
+    }
+
+    // Draw the text blob
+    sk_sp<SkTextBlob> blob = builder.make();
+    //canvas->drawTextBlob(blob, 0, 0, paint);
 }
 
 ParagraphImpl::ParagraphImpl(const SkString& text,
@@ -155,6 +275,11 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
         // Nothing changed case: we can reuse the data from the last layout
     }
 
+    auto hardHyphenedText = ReplaceSoftHyphensWithHard(this->fText.c_str(), this->fText.size());
+    this->fText = hardHyphenedText;
+    this->fClustersIndexFromCodeUnit.clear();
+    this->fClustersIndexFromCodeUnit.push_back_n(this->fText.size() + 1, EMPTY_INDEX);
+
     if (fState < kShaped) {
         // Check if we have the text in the cache and don't need to shape it again
         if (!fFontCollection->getParagraphCache()->findParagraph(this)) {
@@ -169,6 +294,7 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
             this->fClusters.clear();
             this->fClustersIndexFromCodeUnit.clear();
             this->fClustersIndexFromCodeUnit.push_back_n(fText.size() + 1, EMPTY_INDEX);
+
             if (!this->shapeTextIntoEndlessLine()) {
                 this->resetContext();
                 // TODO: merge the two next calls - they always come together
