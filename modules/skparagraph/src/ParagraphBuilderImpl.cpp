@@ -34,6 +34,8 @@
 #include <memory>
 #include <utility>
 
+SkString ReplaceSoftHyphensWithHard(const char utf8[], int utf8Units);
+
 namespace skia {
 namespace textlayout {
 

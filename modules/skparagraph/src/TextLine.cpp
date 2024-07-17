@@ -252,8 +252,10 @@ void TextLine::ensureTextBlobCachePopulated() {
                                      run.calculateHeight(this->fAscentStyle, this->fDescentStyle));
 
         auto& start = fOwner->cluster(fClusterRange.start);
-        auto& end = fOwner->cluster(fClusterRange.end - 1);
-        SkASSERT(start.runIndex() == end.runIndex());
+        auto& end = fOwner->cluster(fClusterRange.end - 2); // TODO: This works with end - 2.
+        const auto startRunIndex = start.runIndex();
+        const auto endRunIndex = end.runIndex();
+        SkASSERT(startRunIndex == endRunIndex);
         GlyphRange glyphs;
         if (run.leftToRight()) {
             glyphs = GlyphRange(start.startPos(),

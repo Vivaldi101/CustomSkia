@@ -275,11 +275,6 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
         // Nothing changed case: we can reuse the data from the last layout
     }
 
-    auto hardHyphenedText = ReplaceSoftHyphensWithHard(this->fText.c_str(), this->fText.size());
-    this->fText = hardHyphenedText;
-    this->fClustersIndexFromCodeUnit.clear();
-    this->fClustersIndexFromCodeUnit.push_back_n(this->fText.size() + 1, EMPTY_INDEX);
-
     if (fState < kShaped) {
         // Check if we have the text in the cache and don't need to shape it again
         if (!fFontCollection->getParagraphCache()->findParagraph(this)) {
@@ -636,6 +631,9 @@ void ParagraphImpl::buildClusterTable() {
         fCodeUnitProperties[fRuns.back().textRange().end] |= SkUnicode::CodeUnitFlags::kGraphemeStart;
         fCodeUnitProperties[fRuns.back().textRange().end] |= SkUnicode::CodeUnitFlags::kGlyphClusterStart;
     }
+
+    // Add one for the hard-hyphen.
+    cluster_count++;
     fClusters.reserve_exact(fClusters.size() + cluster_count);
 
     // Walk through all the run in the direction of input text
@@ -674,6 +672,10 @@ void ParagraphImpl::buildClusterTable() {
         run.setClusterRange(runStart, fClusters.size());
         fMaxIntrinsicWidth += run.advance().fX;
     }
+    //fClusters.emplace_back(this, 0, 0ul, 1ul, this->text(TextRange{}), 10, 10);
+
+    fClustersIndexFromCodeUnit.push_back();
+    fCodeUnitProperties.push_back();
     fClustersIndexFromCodeUnit[fText.size()] = fClusters.size();
     fClusters.emplace_back(this, EMPTY_RUN, 0, 0, this->text({fText.size(), fText.size()}), 0, 0);
 }
@@ -686,6 +688,9 @@ bool ParagraphImpl::shapeTextIntoEndlessLine() {
 
     fUnresolvedCodepoints.clear();
     fFontSwitches.clear();
+
+    // TODO: Toggle this as a style?
+    replaceSoftHyphens();
 
     OneLineShaper oneLineShaper(this);
     auto result = oneLineShaper.shape();
@@ -702,6 +707,7 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
         !fHasWhitespacesInside &&
         fPlaceholders.size() == 1 &&
         fRuns.size() == 1 && fRuns[0].fAdvance.fX <= maxWidth) {
+
         // This is a short version of a line breaking when we know that:
         // 1. We have only one line of text
         // 2. It's shaped into a single run
@@ -712,6 +718,7 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
         // we should calculate minIntrinsicWidth by soft line breaks.
         // However, it's how it's done in Flutter now)
         auto& run = this->fRuns[0];
+
         auto advance = run.advance();
         auto textRange = TextRange(0, this->text().size());
         auto textExcludingSpaces = TextRange(0, fTrailingSpaces);
@@ -744,6 +751,10 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
         advance.fY = metrics.height();
         auto clusterRange = ClusterRange(0, trailingSpaces);
         auto clusterRangeWithGhosts = ClusterRange(0, this->clusters().size() - 1);
+
+        // For the soft-hyphen. TODO: Get this from the line?
+        clusterRange.end += 1;
+
         this->addLine(SkPoint::Make(0, 0), advance,
                       textExcludingSpaces, textRange, textRange,
                       clusterRange, clusterRangeWithGhosts, run.advance().x(),
@@ -1511,6 +1522,14 @@ std::vector<Paragraph::FontInfo> ParagraphImpl::getFonts() const {
         results.emplace_back(run.font(), run.textRange());
     }
     return results;
+}
+
+void ParagraphImpl::replaceSoftHyphens(TextRange rangeToReplace) {
+    if (rangeToReplace.empty()) {
+        const auto hardHyphenedText =
+                ReplaceSoftHyphensWithHard(this->fText.c_str(), this->fText.size());
+        this->fText = hardHyphenedText;
+    }
 }
 
 void ParagraphImpl::extendedVisit(const ExtendedVisitor& visitor) {

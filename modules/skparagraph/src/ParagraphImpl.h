@@ -246,6 +246,8 @@ public:
 
     sk_sp<SkUnicode> getUnicode() { return fUnicode; }
 
+    void replaceSoftHyphens(TextRange rangeToReplace = TextRange{EMPTY_INDEX, EMPTY_INDEX});
+
 private:
     friend class ParagraphBuilder;
     friend class ParagraphCacheKey;
@@ -271,7 +273,8 @@ private:
     // Internal structures
     InternalState fState;
     skia_private::TArray<Run, false> fRuns;         // kShaped
-    skia_private::TArray<Cluster, true> fClusters;  // kClusterized (cached: text, word spacing, letter spacing, resolved fonts)
+    typedef skia_private::TArray<Cluster, true> ClusterType;
+    ClusterType fClusters;  // kClusterized (cached: text, word spacing, letter spacing, resolved fonts)
     skia_private::TArray<SkUnicode::CodeUnitFlags, true> fCodeUnitProperties;
     skia_private::TArray<size_t, true> fClustersIndexFromCodeUnit;
     std::vector<size_t> fWords;

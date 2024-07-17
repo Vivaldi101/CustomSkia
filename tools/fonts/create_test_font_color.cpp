@@ -410,20 +410,16 @@ int main(int argc, char** argv)
 
     sk_sp<skia::textlayout::FontCollection> fontCollection = sk_make_sp<skia::textlayout::FontCollection>();
     fontCollection->setDefaultFontManager(ToolUtils::TestFontMgr());
+
+    // Add hyphening into paragraphstyle?
     skia::textlayout::ParagraphStyle style{};
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    const char* texts[] = {"Softtttttttttttttttttttttttttttttttttttttttt\u00ADHyphen"};
-    //texts[4] = (char)194;
-    //texts[5] = (char)173;
-    //const char* texts[] = {"biggg123456789111"};
-    //const char* texts[] = {"Hello, World!!!"};
-    //const char* texts[] = {"Bigasspaska.", "Hello.", "World."};
-    //const char* texts[] = {"Bigasspaska."};
-
-    for (size_t i = 0; i < ArrayCount(texts); ++i) 
+    const char* texts[] = {"12345tttttttttttttttttttttttttttttttttt\u00ADHyphen."};
+    for (auto i = 0u; i != ArrayCount(texts); ++i) {
         paraBuilder->addText(texts[i]);
+    }
 
     auto built = paraBuilder->Build();
     skia::textlayout::ParagraphImpl* paragraph = reinterpret_cast<skia::textlayout::ParagraphImpl*>(built.get());
@@ -453,10 +449,9 @@ int main(int argc, char** argv)
 
         ClearFrameBuffers(canvas.get(), SkColors::kLtGray);
 
+        // aasdfasf sdfsdf f
         paragraph->layout(winArea.width);
         paragraph->paint(canvas.get(), 0, 0);
-
-        //DrawEverything(canvas.get(), texts, ArrayCount(texts));
 
         SwapFrameBuffers(window);
 
