@@ -490,6 +490,13 @@ Cluster::Cluster(ParagraphImpl* owner,
                  SkScalar height)
         : fOwner(owner)
         , fRunIndex(runIndex)
+        // ptrdiff_t p = text.begin() - fOwner->text().begin()
+        // => text.begin() == fOwner->text().begin() + p 
+        // => fOwner->text().begin() == text.begin() - p
+
+        // ptrdiff_t p = text.end() - fOwner->text().begin()
+        // => text.end() == fOwner->text().begin() + p
+        // => fOwner->text().begin() == text.end() - p
         , fTextRange(text.begin() - fOwner->text().begin(), text.end() - fOwner->text().begin())
         , fGraphemeRange(EMPTY_RANGE)
         , fStart(start)
@@ -500,6 +507,24 @@ Cluster::Cluster(ParagraphImpl* owner,
         , fIsIdeographic(false) {
     size_t whiteSpacesBreakLen = 0;
     size_t intraWordBreakLen = 0;
+
+    {
+        auto textRangeBegin = text.begin() - fOwner->text().begin();
+        assert(text.begin() == fOwner->text().begin() + textRangeBegin);    // I assume, this is what we want to compute?
+        assert(fOwner->text().begin() == text.begin() - textRangeBegin);
+        assert(text.begin() - fOwner->text().begin() == textRangeBegin);
+
+        auto textRangeEnd = text.end() - fOwner->text().begin();
+        assert(text.end() == fOwner->text().begin() + textRangeEnd);        // I assume, this is what we want to compute?
+        assert(fOwner->text().begin() == text.end() - textRangeEnd);
+        assert(text.end() - fOwner->text().begin() == textRangeEnd);        
+
+        assert(text.begin() >= fOwner->text().begin());
+        assert(text.end() >= fOwner->text().begin());
+
+        assert(textRangeBegin == fTextRange.start);
+        assert(textRangeEnd == fTextRange.end);
+    }
 
     const char* ch = text.begin();
     if (text.end() - ch == 1 && *(const unsigned char*)ch <= 0x7F) {
