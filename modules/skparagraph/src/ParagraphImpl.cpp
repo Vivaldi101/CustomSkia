@@ -84,10 +84,12 @@ SkString ReplaceHardHyphensWithSoft(const char utf8[], int utf8Units) {
         (uint8_t)utf8String[shiftIndex + 2] != hardHyphen[2]) 
         return SkString{utf8};
 
-    SkString result{(size_t)utf8Units - 1};
-    memcpy(result.data(), utf8, utf8Units - 1);
+    SkString result{(size_t)utf8Units};
+    memcpy(result.data(), utf8, utf8Units);
     memcpy(result.data() + shiftIndex, utf8 + shiftIndex + 1, utf8Units - shiftIndex - 1);
     memcpy(result.data() + shiftIndex, softHyphen, 2);
+
+    result.remove(result.size() - 1, 1);
 
     return result;
 }
