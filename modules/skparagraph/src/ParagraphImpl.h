@@ -247,6 +247,7 @@ public:
     sk_sp<SkUnicode> getUnicode() { return fUnicode; }
 
     void replaceSoftHyphens(TextRange rangeToReplace = TextRange{EMPTY_INDEX, EMPTY_INDEX});
+    void replaceHardHyphens(TextRange rangeToReplace = TextRange{EMPTY_INDEX, EMPTY_INDEX});
 
 private:
     friend class ParagraphBuilder;
@@ -301,6 +302,7 @@ private:
 
     sk_sp<SkUnicode> fUnicode;
     bool fHasLineBreaks;
+    bool fHasWordBreaks;
     bool fHasWhitespacesInside;
     TextIndex fTrailingSpaces;
 };

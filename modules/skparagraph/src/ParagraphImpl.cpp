@@ -51,6 +51,7 @@ static void DebugMessage(const char* format, ...)
 }
 
 // TODO: Harden indexing with wp-semantics
+// TODO: Currently only replaces the first occurence
 SkString ReplaceSoftHyphensWithHard(const char utf8[], int utf8Units) {
     std::string utf8String{utf8};
     constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
@@ -66,6 +67,27 @@ SkString ReplaceSoftHyphensWithHard(const char utf8[], int utf8Units) {
     memcpy(result.data(), utf8, utf8Units);
     memcpy(result.data() + shiftIndex + 1, utf8 + shiftIndex, utf8Units - shiftIndex);
     memcpy(result.data() + shiftIndex, hardHyphen, 3);
+
+    return result;
+}
+
+// TODO: Harden indexing with wp-semantics
+// TODO: Currently only replaces the first occurence
+SkString ReplaceHardHyphensWithSoft(const char utf8[], int utf8Units) {
+    std::string utf8String{utf8};
+    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
+    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
+
+    const auto shiftIndex = utf8String.find(hardHyphen[0]);
+    if (shiftIndex == utf8String.npos || 
+        (uint8_t)utf8String[shiftIndex + 1] != hardHyphen[1] || 
+        (uint8_t)utf8String[shiftIndex + 2] != hardHyphen[2]) 
+        return SkString{utf8};
+
+    SkString result{(size_t)utf8Units - 1};
+    memcpy(result.data(), utf8, utf8Units - 1);
+    memcpy(result.data() + shiftIndex, utf8 + shiftIndex + 1, utf8Units - shiftIndex - 1);
+    memcpy(result.data() + shiftIndex, softHyphen, 2);
 
     return result;
 }
@@ -275,9 +297,11 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
         // Nothing changed case: we can reuse the data from the last layout
     }
 
-    if (fState < kShaped) {
-        // Check if we have the text in the cache and don't need to shape it again
-        if (!fFontCollection->getParagraphCache()->findParagraph(this)) {
+    //if (fState < kShaped) {   TODO: Enable this.
+    if (1) {
+        // Check if we have the text in the cache and don't need to shape it again. TODO: Add the soft-hyphened line into the cache
+        if (1) {
+        //if (!fFontCollection->getParagraphCache()->findParagraph(this)) {
             if (fState < kIndexed) {
                 // This only happens once at the first layout; the text is immutable
                 // and there is no reason to repeat it
@@ -632,8 +656,6 @@ void ParagraphImpl::buildClusterTable() {
         fCodeUnitProperties[fRuns.back().textRange().end] |= SkUnicode::CodeUnitFlags::kGlyphClusterStart;
     }
 
-    // Add one for the hard-hyphen.
-    cluster_count++;
     fClusters.reserve_exact(fClusters.size() + cluster_count);
 
     // Walk through all the run in the direction of input text
@@ -690,9 +712,14 @@ bool ParagraphImpl::shapeTextIntoEndlessLine() {
     fFontSwitches.clear();
 
     // TODO: Toggle this as a style?
-    replaceSoftHyphens();
+    if (fHasWordBreaks) {
+        replaceSoftHyphens();
+    } else {
+        replaceHardHyphens();
+    }
 
     OneLineShaper oneLineShaper(this);
+
     auto result = oneLineShaper.shape();
     fUnresolvedGlyphs = oneLineShaper.unresolvedGlyphs();
 
@@ -768,9 +795,13 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
         fAlphabeticBaseline = fLines.empty() ? fEmptyMetrics.alphabeticBaseline() : fLines.front().alphabeticBaseline();
         fIdeographicBaseline = fLines.empty() ? fEmptyMetrics.ideographicBaseline() : fLines.front().ideographicBaseline();
         fExceededMaxLines = false;
+        fHasWordBreaks = false;
         return;
     }
 
+    fHasWordBreaks = true;
+
+    // Line break happens here
     TextWrapper textWrapper;
     textWrapper.breakTextIntoLines(
             this,
@@ -1529,6 +1560,14 @@ void ParagraphImpl::replaceSoftHyphens(TextRange rangeToReplace) {
         const auto hardHyphenedText =
                 ReplaceSoftHyphensWithHard(this->fText.c_str(), this->fText.size());
         this->fText = hardHyphenedText;
+    }
+}
+
+void ParagraphImpl::replaceHardHyphens(TextRange rangeToReplace) {
+    if (rangeToReplace.empty()) {
+        const auto softHyphenedText =
+                ReplaceHardHyphensWithSoft(this->fText.c_str(), this->fText.size());
+        this->fText = softHyphenedText;
     }
 }
 
