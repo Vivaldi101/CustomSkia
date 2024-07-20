@@ -511,12 +511,6 @@ int main(int argc, char** argv)
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
     const char* texts[] = {"SoftttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttX\u00ADHyphen."};
-    for (auto i = 0u; i != ArrayCount(texts); ++i) {
-        paraBuilder->addText(texts[i]);
-    }
-
-    auto built = paraBuilder->Build();
-    skia::textlayout::ParagraphImpl* paragraph = reinterpret_cast<skia::textlayout::ParagraphImpl*>(built.get());
 
     constexpr int w = 800, h = 600;
     RECT windowRectangle = {0, 0, w, h};
@@ -530,24 +524,25 @@ int main(int argc, char** argv)
 
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
-    bool doWordBreak = false;
+    bool doLayoutBreak = false;
 
-    auto Layout = [&](SkCanvas* canvas, int w, int h, const char* text, size_t textCount) {
+    auto Layout = [&paraBuilder, &doLayoutBreak](SkCanvas* canvas, int w, int h, const char* text, size_t textCount) {
         paraBuilder->Reset();
+        paraBuilder->addText(text);
+        auto paragraph = paraBuilder->Build();
+        doLayoutBreak = paragraph->layout(w);
 
-        if (doWordBreak) {
-            auto hyphenedText = ReplaceSoftHyphensWithHard(text, textCount);
-            paraBuilder->addText(hyphenedText.c_str());
+        std::string hyphenedText;
+        if (doLayoutBreak) {
+            hyphenedText = ReplaceSoftHyphensWithHard(text, textCount);
         } else {
-            auto hyphenedText = ReplaceHardHyphensWithSoft(text, textCount);
-            paraBuilder->addText(hyphenedText.c_str());
+            hyphenedText = ReplaceHardHyphensWithSoft(text, textCount);
         }
 
-        //hyphenedText = ReplaceHardHyphensWithSoft(hyphenedText.c_str(), hyphenedText.size());
-        //paraBuilder->addText(hyphenedText.c_str());
-
-        auto paragraph = paraBuilder->Build();
-        doWordBreak = paragraph->layout(w);
+        paraBuilder->Reset();
+        paraBuilder->addText(hyphenedText.c_str());
+        paragraph = paraBuilder->Build();
+        paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
     };
 
