@@ -32,17 +32,21 @@
 #include "modules/skparagraph/include/ParagraphStyle.h"
 #include "modules/skparagraph/include/Paragraph.h"
 #include "modules/skparagraph/include/TextStyle.h"
-#include "Windows.h"
 #include <cmath>
 #include <cassert>
 
-#pragma comment(lib, "skparagraph")
+#include <Windows.h>
+#include <timeapi.h>
 
-#if defined(SK_ENABLE_SVG)
+#pragma comment(lib, "skparagraph")
+#pragma comment(lib, "winmm")
+
 
 #define ArrayCount(a) sizeof((a)) / sizeof(*(a))
 
 #define Halt __debugbreak();
+#define MAX_UPS (120)
+#define MSEC_PER_SIM (1000 / MAX_UPS)
 
 #define Pre(a) \
     if (!(a)) Halt
@@ -438,8 +442,60 @@ static void DrawEverything(SkCanvas* canvas, const char** texts, size_t textCoun
     xOffset = georgiaFont.measureText(text, strlen(text), SkTextEncoding::kUTF8);
 }
 
+static int Sys_GetMilliseconds() {
+	static DWORD sys_time_base = timeGetTime();
+	return timeGetTime() - sys_time_base;
+}
+
+static int Com_ModifyFrameMsec(int frame_msec) {
+	int clamped_msec = (int)(MSEC_PER_SIM + MSEC_PER_SIM);
+	if (frame_msec > clamped_msec) {
+		frame_msec = clamped_msec;
+	}
+
+	return frame_msec;
+}
+
+static float global_game_time_residual;
+static int global_game_frame;
+
+static int WaitForFrame() 
+{
+	int num_frames_to_run = 0;
+
+	for (;;) {
+		const int current_frame_time = Sys_GetMilliseconds();
+		static int last_frame_time = current_frame_time;	
+		int delta_milli_seconds = current_frame_time - last_frame_time;
+		last_frame_time = current_frame_time;
+
+		delta_milli_seconds = Com_ModifyFrameMsec(delta_milli_seconds);
+
+		global_game_time_residual += delta_milli_seconds;
+
+		for (;;) {
+			// how much to wait before running the next frame
+			if (global_game_time_residual < MSEC_PER_SIM) {		
+				break;
+			}
+			global_game_time_residual -= MSEC_PER_SIM;
+			global_game_frame++;
+			num_frames_to_run++;
+		}
+
+		if (num_frames_to_run > 0) {
+			// run the frames
+			break;
+		}
+		Sleep(0);
+	}
+
+    return num_frames_to_run;
+}
+
 int main(int argc, char** argv) 
 {
+	timeBeginPeriod(1);
     FiberData data = {};
     data.mainFiber = ConvertThreadToFiber(0);
     data.msgFiber = CreateFiber(0, (PFIBER_START_ROUTINE)FiberMessageProc, &data);
@@ -510,14 +566,18 @@ int main(int argc, char** argv)
 
         Layout(canvas.get(), winArea.width, winArea.height, texts[0], strlen(texts[0]));
 
+        const int framesToRun = WaitForFrame();
+
+        //DebugMessage("Frames to run: %d\n", framesToRun);
+
         SwapFrameBuffers(window);
 
         PushFiberState(&data);
     }
 
+	timeEndPeriod(1);
+
     return 0;
 }
 
-#else
 
-#endif // SK_ENABLE_SVG
