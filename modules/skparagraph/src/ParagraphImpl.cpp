@@ -134,7 +134,7 @@ void ParagraphImpl::addUnresolvedCodepoints(TextRange textRange) {
     );
 }
 
-void ParagraphImpl::layout(SkScalar rawWidth) {
+bool ParagraphImpl::layout(SkScalar rawWidth) {
     // TODO: This rounding is done to match Flutter tests. Must be removed...
     auto floorWidth = rawWidth;
     if (getApplyRoundingHack()) {
@@ -191,7 +191,7 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
                 this->fOldWidth = floorWidth;
                 this->fOldHeight = this->fHeight;
 
-                return;
+                return fHasWordBreaks;
             } else {
                 // Add the paragraph to the cache
                 fFontCollection->getParagraphCache()->updateParagraph(this);
@@ -238,6 +238,7 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
     }
 
     //SkDebugf("layout('%s', %f): %f %f\n", fText.c_str(), rawWidth, fMinIntrinsicWidth, fMaxIntrinsicWidth);
+    return fHasWordBreaks;
 }
 
 void ParagraphImpl::paint(SkCanvas* canvas, SkScalar x, SkScalar y) {
@@ -631,6 +632,7 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
         fAlphabeticBaseline = fLines.empty() ? fEmptyMetrics.alphabeticBaseline() : fLines.front().alphabeticBaseline();
         fIdeographicBaseline = fLines.empty() ? fEmptyMetrics.ideographicBaseline() : fLines.front().ideographicBaseline();
         fExceededMaxLines = false;
+        fHasWordBreaks = false;
         return;
     }
 
@@ -665,6 +667,7 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
     fAlphabeticBaseline = fLines.empty() ? fEmptyMetrics.alphabeticBaseline() : fLines.front().alphabeticBaseline();
     fIdeographicBaseline = fLines.empty() ? fEmptyMetrics.ideographicBaseline() : fLines.front().ideographicBaseline();
     fExceededMaxLines = textWrapper.exceededMaxLines();
+    fHasWordBreaks = true;
 }
 
 void ParagraphImpl::formatLines(SkScalar maxWidth) {

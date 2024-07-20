@@ -34,6 +34,7 @@
 #include "modules/skparagraph/include/TextStyle.h"
 #include "Windows.h"
 #include <cmath>
+#include <cassert>
 
 #pragma comment(lib, "skparagraph")
 
@@ -41,7 +42,56 @@
 
 #define ArrayCount(a) sizeof((a)) / sizeof(*(a))
 
-void drawTextWithSoftHyphen(SkCanvas* canvas,
+#define Halt __debugbreak();
+
+#define Pre(a) \
+    if (!(a)) Halt
+#define Post(a) \
+    if (!(a)) Halt
+#define Invariant(a) \
+    if (!(a)) Halt
+#define Implies(a, b) (!(a) || (b))
+#define Iff(a, b) ((a) == (b))
+
+// TODO: Harden indexing with wp-semantics
+// TODO: Currently only replaces the first occurence
+static std::string ReplaceSoftHyphensWithHard(const char utf8[], int utf8Units) {
+    std::string utf8String{utf8};
+    utf8String.resize(utf8String.size() + 1);
+    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
+    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
+
+    const auto shiftIndex = utf8String.find(softHyphen[0]);
+    if (shiftIndex == utf8String.npos || (uint8_t)utf8String[shiftIndex + 1] != softHyphen[1])
+        return utf8String;
+
+    memcpy(utf8String.data() + shiftIndex + 1, utf8 + shiftIndex, utf8Units - shiftIndex);
+    memcpy(utf8String.data() + shiftIndex, hardHyphen, 3);
+
+    return utf8String;
+}
+
+// TODO: Harden indexing with wp-semantics
+// TODO: Currently only replaces the first occurence
+static std::string ReplaceHardHyphensWithSoft(const char utf8[], int utf8Units) {
+    std::string utf8String{utf8};
+    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
+    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
+
+    const auto shiftIndex = utf8String.find(hardHyphen[0]);
+    if (shiftIndex == utf8String.npos || (uint8_t)utf8String[shiftIndex + 1] != hardHyphen[1] ||
+        (uint8_t)utf8String[shiftIndex + 2] != hardHyphen[2])
+        return utf8String;
+
+    memcpy(utf8String.data() + shiftIndex, utf8 + shiftIndex + 1, utf8Units - shiftIndex - 1);
+    memcpy(utf8String.data() + shiftIndex, softHyphen, 2);
+
+    utf8String.erase(utf8String.end()-1);
+
+    return utf8String;
+}
+
+static void drawTextWithSoftHyphen(SkCanvas* canvas,
                             const char* text,
                             float x,
                             float y,
@@ -62,6 +112,7 @@ struct FiberData
 {
     void* mainFiber;
     void* msgFiber;
+    HWND window;
     bool isQuit;
 };
 
@@ -207,9 +258,9 @@ static void PullFiberState(FiberData* data)
 static void PushFiberState(FiberData* data) 
 {
 }
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK WndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    FiberData* data = (FiberData*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+    FiberData* data = (FiberData*)GetWindowLongPtr(window, GWLP_USERDATA);
 
     LRESULT result = 0;
 
@@ -220,17 +271,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     case WM_ENTERMENULOOP:
     case WM_ENTERSIZEMOVE:
-        SetTimer(hWnd, 1, 1, 0);
+        assert(data->window == window);
+        SetTimer(window, 1, 1, 0);
         break;
     case WM_EXITMENULOOP:
     case WM_EXITSIZEMOVE:
-        KillTimer(hWnd, 1);
+        assert(data->window == window);
+        KillTimer(window, 1);
         break;
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
-		auto hdc = BeginPaint(hWnd, &ps);
-		EndPaint(hWnd, &ps);
+		auto hdc = BeginPaint(window, &ps);
+        assert(data->window == window);
+		EndPaint(window, &ps);
         break;
 	}
     case WM_SIZE: 
@@ -252,12 +306,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_CLOSE:
-		DestroyWindow(hWnd);
+        assert(data->window == window);
+		DestroyWindow(window);
         data->isQuit = true;
 		break;
 
 	default: 
-        result = DefWindowProc(hWnd, message, wParam, lParam);
+        result = DefWindowProc(window, message, wParam, lParam);
 	}
 
 	return result;
@@ -270,45 +325,71 @@ static void drawTextWithSoftHyphen(SkCanvas* canvas,
                             const SkPaint& paint,
                             const SkFont& font) 
 {
-    SkTextBlobBuilder builder;
+    SkTextBlobBuilder builder{};
     const char* current = text;
-    const char* next;
-
     float currentX = x;
 
-    // Iterate through the text to handle soft hyphens
+    // Allocate a buffer for the maximum possible glyphs
+    size_t maxGlyphs = strlen(text);
+    std::vector<SkGlyphID> glyphs(maxGlyphs);
+
     while (*current) 
     {
-        // Find the next soft hyphen
-        next = strchr(current, '\xAD');
-        if (!next) 
+        // Find the next soft hyphen (utf8: 0xC2 0xAD)
+        const char* start = strchr(current, '\xC2');
+        // No more soft hyphens, draw the rest of the text.
+        if (!start) 
         {
-            // No more soft hyphens, draw the rest of the text
-            int len = strlen(current);
-            auto& runBuffer = builder.allocRun(font, len, currentX, y);
-            font.textToGlyphs(current, len, SkTextEncoding::kUTF8, runBuffer.glyphs, len);
-            currentX += font.measureText(current, len, SkTextEncoding::kUTF8);
-            break;
+            size_t postHyphenGlyphCount = maxGlyphs - (current - text);
+            // Convert post-hyphen text to glyphs
+            int glyphCount = font.textToGlyphs(current,
+                                               postHyphenGlyphCount,
+                                               SkTextEncoding::kUTF8,
+                                               glyphs.data(),
+                                               glyphs.size());
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph indexes
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Draw the rest of the text
+            sk_sp<SkTextBlob> blob = builder.make();
+            canvas->drawTextBlob(blob, 0, 0, paint);
+            return;
+        }
+        //const char* end = strchr(start, '\xAD');
+        const char* end = start + 1;
+        assert(*end == '\xAD');
+
+        const size_t preHyphenGlyphCount = start - current;
+
+        // Convert pre-hyphen text to glyphs
+        int glyphCount = font.textToGlyphs(current, preHyphenGlyphCount, SkTextEncoding::kUTF8, glyphs.data(), glyphs.size());
+
+        // Draw pre-hyphen segment
+        if (glyphCount > 0) 
+        {
+            // Allocate the run buffer
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph indexes
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Advance the x coordinate inside the blob
+            currentX += font.measureText(current, preHyphenGlyphCount, SkTextEncoding::kUTF8);
         }
 
-        // Draw the text before the soft hyphen
-        if (next != current) 
-        {
-            int len = next - current;
-            auto& runBuffer = builder.allocRun(font, len, currentX, y);
-            font.textToGlyphs(current, len, SkTextEncoding::kUTF8, runBuffer.glyphs, len);
-            currentX += font.measureText(current, len, SkTextEncoding::kUTF8);
-        }
 
-        // Draw the soft hyphen as a regular hyphen
+        // Draw the soft-hyphen as a regular hyphen
         {
-            auto& runBuffer = builder.allocRun(font, 1, currentX, y);
-            font.textToGlyphs("-", 1, SkTextEncoding::kUTF8, runBuffer.glyphs, 1);
+            // Convert hyphen into glyph index
+            glyphCount = font.textToGlyphs("-", 1, SkTextEncoding::kUTF8, glyphs.data(), 1);
+            // Allocate the run buffer for the hyphen
+            const SkTextBlobBuilder::RunBuffer& buffer = builder.allocRun(font, glyphCount, currentX, y);
+            // Copy the glyph index for the hyphen
+            memcpy(buffer.glyphs, glyphs.data(), glyphCount * sizeof(SkGlyphID));
+            // Advance the x coordinate by one
             currentX += font.measureText("-", 1, SkTextEncoding::kUTF8);
         }
 
         // Move to the next character after the soft hyphen
-        current = next + 1;
+        current = end + 1;
     }
 
     // Draw the text blob
@@ -367,15 +448,16 @@ int main(int argc, char** argv)
 
     sk_sp<skia::textlayout::FontCollection> fontCollection = sk_make_sp<skia::textlayout::FontCollection>();
     fontCollection->setDefaultFontManager(ToolUtils::TestFontMgr());
-    auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make({}, fontCollection);
 
-    // Notice the soft-hyphen (00AD)
-    const char* texts[] = {"bigggggggggggggggggggggggggggggggg\u00ADass."};
-    //const char* texts[] = {"Bigasspaska.", "Hello.", "World."};
-    //const char* texts[] = {"Bigasspaska."};
+    // Add hyphening into paragraphstyle?
+    skia::textlayout::ParagraphStyle style{};
+    style.setReplaceTabCharacters(true);
+    auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    for (size_t i = 0; i < ArrayCount(texts); ++i) 
+    const char* texts[] = {"SoftttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttX\u00ADHyphen."};
+    for (auto i = 0u; i != ArrayCount(texts); ++i) {
         paraBuilder->addText(texts[i]);
+    }
 
     auto built = paraBuilder->Build();
     skia::textlayout::ParagraphImpl* paragraph = reinterpret_cast<skia::textlayout::ParagraphImpl*>(built.get());
@@ -384,11 +466,34 @@ int main(int argc, char** argv)
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
-    HWND window = MakeWindow(windowRectangle.right - windowRectangle.left, windowRectangle.bottom - windowRectangle.top);
+    const HWND window = MakeWindow(windowRectangle.right - windowRectangle.left, windowRectangle.bottom - windowRectangle.top);
+
+    data.window = window;
 
     if (ShowWindow(window, SW_SHOW)) return -1;
 
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
+
+    bool doWordBreak = false;
+
+    auto Layout = [&](SkCanvas* canvas, int w, int h, const char* text, size_t textCount) {
+        paraBuilder->Reset();
+
+        if (doWordBreak) {
+            auto hyphenedText = ReplaceSoftHyphensWithHard(text, textCount);
+            paraBuilder->addText(hyphenedText.c_str());
+        } else {
+            auto hyphenedText = ReplaceHardHyphensWithSoft(text, textCount);
+            paraBuilder->addText(hyphenedText.c_str());
+        }
+
+        //hyphenedText = ReplaceHardHyphensWithSoft(hyphenedText.c_str(), hyphenedText.size());
+        //paraBuilder->addText(hyphenedText.c_str());
+
+        auto paragraph = paraBuilder->Build();
+        doWordBreak = paragraph->layout(w);
+        paragraph->paint(canvas, 0, 0);
+    };
 
     MSG msg;
     memset(&msg, 0, sizeof(msg));
@@ -403,10 +508,7 @@ int main(int argc, char** argv)
 
         ClearFrameBuffers(canvas.get(), SkColors::kLtGray);
 
-        paragraph->layout(winArea.width);
-        paragraph->paint(canvas.get(), 0, 0);
-
-        //DrawEverything(canvas.get(), texts, ArrayCount(texts));
+        Layout(canvas.get(), winArea.width, winArea.height, texts[0], strlen(texts[0]));
 
         SwapFrameBuffers(window);
 

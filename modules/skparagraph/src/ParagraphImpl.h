@@ -105,7 +105,7 @@ public:
 
     ~ParagraphImpl() override;
 
-    void layout(SkScalar width) override;
+    bool layout(SkScalar width) override;
     void paint(SkCanvas* canvas, SkScalar x, SkScalar y) override;
     void paint(ParagraphPainter* canvas, SkScalar x, SkScalar y) override;
     std::vector<TextBox> getRectsForRange(unsigned start,
@@ -297,6 +297,7 @@ private:
     SkScalar fMaxWidthWithTrailingSpaces;
 
     sk_sp<SkUnicode> fUnicode;
+    bool fHasWordBreaks;
     bool fHasLineBreaks;
     bool fHasWhitespacesInside;
     TextIndex fTrailingSpaces;

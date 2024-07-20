@@ -39,7 +39,7 @@ public:
 
     bool didExceedMaxLines() { return fExceededMaxLines; }
 
-    virtual void layout(SkScalar width) = 0;
+    virtual bool layout(SkScalar width) = 0;
 
     virtual void paint(SkCanvas* canvas, SkScalar x, SkScalar y) = 0;
 
