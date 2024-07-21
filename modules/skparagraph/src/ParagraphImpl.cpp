@@ -28,6 +28,7 @@
 #include <cmath>
 #include <utility>
 
+void DebugMessage(const char* format, ...);
 using namespace skia_private;
 
 namespace skia {
@@ -636,6 +637,8 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
         return;
     }
 
+    //DebugMessage("Breaking\n");
+
     TextWrapper textWrapper;
     textWrapper.breakTextIntoLines(
             this,
@@ -654,10 +657,12 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
                 bool addEllipsis) {
                 // TODO: Take in account clipped edges
                 auto& line = this->addLine(offset, advance, textExcludingSpaces, text, textWithNewlines, clusters, clustersWithGhosts, widthWithSpaces, metrics);
+                DebugMessage("Text line: [%d, %d]. Cluster: [%d, %d]\n", text.start, text.end, clusters.start, clusters.end);
                 if (addEllipsis) {
                     line.createEllipsis(maxWidth, this->getEllipsis(), true);
                 }
                 fLongestLine = std::max(fLongestLine, nearlyZero(advance.fX) ? widthWithSpaces : advance.fX);
+                //DebugMessage("Longest line: %d\n", (int)fLongestLine);
             });
 
     fHeight = textWrapper.height();

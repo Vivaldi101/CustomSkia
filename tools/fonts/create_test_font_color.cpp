@@ -25,6 +25,7 @@
 #include "tools/window/RasterWindowContext.h"
 #include "tools/fonts/FontToolUtils.h"
 #include "modules/skparagraph/src/ParagraphBuilderImpl.h"
+#include "modules/skparagraph/src/ParagraphImpl.h"
 #include "modules/skparagraph/src/Run.h"
 #include "modules/skparagraph/src/TextWrapper.h"
 #include "modules/skparagraph/src/ParagraphImpl.h"
@@ -57,9 +58,22 @@
 #define Implies(a, b) (!(a) || (b))
 #define Iff(a, b) ((a) == (b))
 
+// Semantic compress the functions
+static size_t FindFirstSoftHyphen(const char utf8[], size_t utf8Units) 
+{
+    std::string utf8String{utf8};
+    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
+
+    const auto result = utf8String.find(softHyphen[0]);
+    if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != softHyphen[1])
+        return -1;
+
+    return result;
+}
+
 // TODO: Harden indexing with wp-semantics
 // TODO: Currently only replaces the first occurence
-static std::string ReplaceSoftHyphensWithHard(const char utf8[], int utf8Units) {
+static std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units) {
     std::string utf8String{utf8};
     utf8String.resize(utf8String.size() + 1);
     constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
@@ -77,7 +91,7 @@ static std::string ReplaceSoftHyphensWithHard(const char utf8[], int utf8Units) 
 
 // TODO: Harden indexing with wp-semantics
 // TODO: Currently only replaces the first occurence
-static std::string ReplaceHardHyphensWithSoft(const char utf8[], int utf8Units) {
+static std::string ReplaceHardHyphensWithSoft(const char utf8[], size_t utf8Units) {
     std::string utf8String{utf8};
     constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
     constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
@@ -102,7 +116,7 @@ static void drawTextWithSoftHyphen(SkCanvas* canvas,
                             const SkPaint& paint,
                             const SkFont& font);
 
-static void DebugMessage(const char* format, ...) 
+void DebugMessage(const char* format, ...) 
 {
     char Temp[1024];
     va_list Args;
@@ -510,7 +524,9 @@ int main(int argc, char** argv)
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    const char* texts[] = {"SoftttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttX\u00ADHyphen."};
+    // TODO: Fix hyphening for white space separated words.
+    const char* texts[] = {"Softtttttttasd\u00ADHyphen."};
+    //const char* texts[] = {"Hel\u00ADlo"};
 
     constexpr int w = 800, h = 600;
     RECT windowRectangle = {0, 0, w, h};
@@ -531,6 +547,18 @@ int main(int argc, char** argv)
         paraBuilder->addText(text);
         auto paragraph = paraBuilder->Build();
         doLayoutBreak = paragraph->layout(w);
+
+        const auto range = paragraph->getActualTextRange(0, true);
+
+        auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
+        const auto offsetIndex = FindFirstSoftHyphen(text, textCount);
+        const auto boundary = paragraphImpl->getWordBoundary(offsetIndex);
+        const auto surroundingGraphemeCount = paragraphImpl->countSurroundingGraphemes(boundary);
+
+        const auto runs = paragraphImpl->runs();
+
+        // TODO: Get a way of knowing if this cluster or grapheme range involves a hard line break around the soft-hyphen 
+        // if so, then replace soft with hard hyphen
 
         std::string hyphenedText;
         if (doLayoutBreak) {
@@ -563,7 +591,7 @@ int main(int argc, char** argv)
 
         const int framesToRun = WaitForFrame();
 
-        //DebugMessage("Frames to run: %d\n", framesToRun);
+        //D sdf dgMessage("Frames to run: %d\n", esToRun);
 
         SwapFrameBuffers(window);
 
@@ -576,3 +604,4 @@ int main(int argc, char** argv)
 }
 
 
+// asdlf sd sd asd fsdf dsd sf
