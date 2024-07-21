@@ -71,6 +71,20 @@ static size_t FindFirstSoftHyphen(const char utf8[], size_t utf8Units)
     return result;
 }
 
+// Semantic compress the functions
+static size_t FindFirstHardHyphen(const char utf8[], size_t utf8Units) 
+{
+    std::string utf8String{utf8};
+    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
+
+    const auto result = utf8String.find(hardHyphen[0]);
+    if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != hardHyphen[1] ||
+        (uint8_t)utf8String[result + 2] != hardHyphen[2])
+        return -1;
+
+    return result;
+}
+
 // TODO: Harden indexing with wp-semantics
 // TODO: Currently only replaces the first occurence
 static std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units) {
@@ -525,7 +539,7 @@ int main(int argc, char** argv)
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
     // TODO: Fix hyphening for white space separated words.
-    const char* texts[] = {"Softtttttttttttttttttttttttasd asd\u00ADHyphen."};
+    const char* texts[] = {"Softtttttttttttttttttttttttasd\u00ADHyphen."};
     //const char* texts[] = {"Hel\u00ADlo"};
 
     constexpr int w = 800, h = 600;
@@ -540,23 +554,23 @@ int main(int argc, char** argv)
 
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
-    auto Layout = [&paraBuilder](SkCanvas* canvas, int w, int h, const char* text, size_t textCount) {
+    std::string hyphenedTextTmp{texts[0]};
+    auto Layout = [&paraBuilder, &hyphenedTextTmp](SkCanvas* canvas, int w, int h, const char* text, size_t textCount) {
         paraBuilder->Reset();
         paraBuilder->addText(text);
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
 
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
-        const auto offsetIndex = FindFirstSoftHyphen(text, textCount);
-        const auto boundary = paragraphImpl->getWordBoundary(offsetIndex);
-        const auto range = paragraphImpl->getControlRangeInsideText(boundary);
+        const auto softHyphenIndex = FindFirstSoftHyphen(text, textCount);
+        const auto hardHyphenIndex = FindFirstHardHyphen(hyphenedTextTmp.c_str(), hyphenedTextTmp.size());
+        const auto softBoundary = paragraphImpl->getWordBoundary(softHyphenIndex);
+        const auto hardBoundary = paragraphImpl->getWordBoundary(hardHyphenIndex);
+        const auto softRange = paragraphImpl->getControlRangeInsideText(softBoundary);
 
         bool isBreak = false;
-        if (!range.empty())
-            isBreak = paragraphImpl->isSoftHyphenBreakWithinRange(range);
-
-        // TODO: Get a way of knowing if this cluster or grapheme range involves a hard line break around the soft-hyphen 
-        // if so, then replace soft with hard hyphen
+        if ((softHyphenIndex != hardHyphenIndex) && !softRange.empty())
+            isBreak = paragraphImpl->isSoftHyphenBreakWithinRange(softRange);
 
         std::string hyphenedText;
         if (isBreak)
@@ -564,6 +578,7 @@ int main(int argc, char** argv)
         else
             hyphenedText = ReplaceHardHyphensWithSoft(text, textCount);
 
+        hyphenedTextTmp = hyphenedText;
         paraBuilder->Reset();
         paraBuilder->addText(hyphenedText.c_str());
         paragraph = paraBuilder->Build();
@@ -600,4 +615,4 @@ int main(int argc, char** argv)
 }
 
 
-// dsdfsd fasdf 
+// dsdfsd fadf sd fd fsdf d

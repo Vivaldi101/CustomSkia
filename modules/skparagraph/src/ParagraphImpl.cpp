@@ -676,11 +676,12 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
     fHasWordBreaks = true;
 
     // TODO: wp semantics
+    // TODO: semantic compression into function
+    // TODO: dont need to test for line size > 1?
     if (fLines.size() > 1) {
         for (size_t i = 0; i + 1 != fCodeUnitProperties.size(); ++i) {
             if (((fCodeUnitProperties[i] == SkUnicode::CodeUnitFlags::kControl)) &&
                 (fCodeUnitProperties[i + 1] & SkUnicode::CodeUnitFlags::kSoftLineBreakBefore) != 0) {
-                DebugMessage("Code unit flag: %d\n", fCodeUnitProperties[i]);
                 fCodeUnitProperties[i + 1] |= SkUnicode::CodeUnitFlags::kSoftHyphen;
             }
         }
