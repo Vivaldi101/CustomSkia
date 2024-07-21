@@ -549,6 +549,7 @@ void ParagraphImpl::buildClusterTable() {
 
         run.setClusterRange(runStart, fClusters.size());
         fMaxIntrinsicWidth += run.advance().fX;
+
     }
     fClustersIndexFromCodeUnit[fText.size()] = fClusters.size();
     fClusters.emplace_back(this, EMPTY_RUN, 0, 0, this->text({fText.size(), fText.size()}), 0, 0);
@@ -657,7 +658,7 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
                 bool addEllipsis) {
                 // TODO: Take in account clipped edges
                 auto& line = this->addLine(offset, advance, textExcludingSpaces, text, textWithNewlines, clusters, clustersWithGhosts, widthWithSpaces, metrics);
-                DebugMessage("Text line: [%d, %d]. Cluster: [%d, %d]\n", text.start, text.end, clusters.start, clusters.end);
+                //DebugMessage("Text line: [%d, %d]. Cluster: [%d, %d]\n", text.start, text.end, clusters.start, clusters.end);
                 if (addEllipsis) {
                     line.createEllipsis(maxWidth, this->getEllipsis(), true);
                 }
@@ -673,6 +674,17 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
     fIdeographicBaseline = fLines.empty() ? fEmptyMetrics.ideographicBaseline() : fLines.front().ideographicBaseline();
     fExceededMaxLines = textWrapper.exceededMaxLines();
     fHasWordBreaks = true;
+
+    // TODO: wp semantics
+    if (fLines.size() > 1) {
+        for (size_t i = 0; i + 1 != fCodeUnitProperties.size(); ++i) {
+            if (((fCodeUnitProperties[i] == SkUnicode::CodeUnitFlags::kControl)) &&
+                (fCodeUnitProperties[i + 1] & SkUnicode::CodeUnitFlags::kSoftLineBreakBefore) != 0) {
+                DebugMessage("Code unit flag: %d\n", fCodeUnitProperties[i]);
+                fCodeUnitProperties[i + 1] |= SkUnicode::CodeUnitFlags::kSoftHyphen;
+            }
+        }
+    }
 }
 
 void ParagraphImpl::formatLines(SkScalar maxWidth) {
@@ -1141,6 +1153,32 @@ TArray<TextIndex> ParagraphImpl::countSurroundingGraphemes(TextRange textRange) 
         }
     }
     return graphemes;
+}
+
+// TODO: Optimize
+// (Ei: 0 < i < end: (props[i] & hardbreak != 0))
+
+bool ParagraphImpl::isSoftHyphenBreakWithinRange(TextRange textRange) const {
+    textRange = textRange.intersection({0, fText.size()});
+    for (auto index = textRange.start; index < textRange.end; ++index) {
+        if ((fCodeUnitProperties[index] & SkUnicode::CodeUnitFlags::kSoftHyphen) != 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// TODO: Optimize
+TextRange ParagraphImpl::getControlRangeInsideText(TextRange textRange) const {
+    textRange = textRange.intersection({0, fText.size()});
+    for (auto index = textRange.start; index < textRange.end; ++index) {
+        if ((fCodeUnitProperties[index] & SkUnicode::CodeUnitFlags::kControl) != 0) {
+            return TextRange{index, textRange.end};
+        }
+    }
+
+    return EMPTY_RANGE;
 }
 
 TextIndex ParagraphImpl::findPreviousGraphemeBoundary(TextIndex utf8) const {

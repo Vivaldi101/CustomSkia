@@ -142,6 +142,10 @@ public:
     void formatLines(SkScalar maxWidth);
     void ensureUTF16Mapping();
     skia_private::TArray<TextIndex> countSurroundingGraphemes(TextRange textRange) const;
+    bool isSoftHyphenBreakWithinRange(TextRange textRange) const;
+
+    // TODO: Change the api name
+    TextRange getControlRangeInsideText(TextRange textRange) const;
     TextIndex findNextGraphemeBoundary(TextIndex utf8) const;
     TextIndex findPreviousGraphemeBoundary(TextIndex utf8) const;
     TextIndex findNextGlyphClusterBoundary(TextIndex utf8) const;

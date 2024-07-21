@@ -90,6 +90,7 @@ class SKUNICODE_API SkUnicode : public SkRefCnt {
             kEmoji = 0x200,
             kWordBreak = 0x400,
             kSentenceBreak = 0x800,
+            kSoftHyphen = 0x1000,
         };
         enum class TextDirection {
             kLTR,

@@ -525,7 +525,7 @@ int main(int argc, char** argv)
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
     // TODO: Fix hyphening for white space separated words.
-    const char* texts[] = {"Softtttttttasd\u00ADHyphen."};
+    const char* texts[] = {"Softtttttttttttttttttttttttasd asd\u00ADHyphen."};
     //const char* texts[] = {"Hel\u00ADlo"};
 
     constexpr int w = 800, h = 600;
@@ -540,32 +540,29 @@ int main(int argc, char** argv)
 
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
-    bool doLayoutBreak = false;
-
-    auto Layout = [&paraBuilder, &doLayoutBreak](SkCanvas* canvas, int w, int h, const char* text, size_t textCount) {
+    auto Layout = [&paraBuilder](SkCanvas* canvas, int w, int h, const char* text, size_t textCount) {
         paraBuilder->Reset();
         paraBuilder->addText(text);
         auto paragraph = paraBuilder->Build();
-        doLayoutBreak = paragraph->layout(w);
+        paragraph->layout(w);
 
-        const auto range = paragraph->getActualTextRange(0, true);
-
-        auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
+        const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
         const auto offsetIndex = FindFirstSoftHyphen(text, textCount);
         const auto boundary = paragraphImpl->getWordBoundary(offsetIndex);
-        const auto surroundingGraphemeCount = paragraphImpl->countSurroundingGraphemes(boundary);
+        const auto range = paragraphImpl->getControlRangeInsideText(boundary);
 
-        const auto runs = paragraphImpl->runs();
+        bool isBreak = false;
+        if (!range.empty())
+            isBreak = paragraphImpl->isSoftHyphenBreakWithinRange(range);
 
         // TODO: Get a way of knowing if this cluster or grapheme range involves a hard line break around the soft-hyphen 
         // if so, then replace soft with hard hyphen
 
         std::string hyphenedText;
-        if (doLayoutBreak) {
+        if (isBreak)
             hyphenedText = ReplaceSoftHyphensWithHard(text, textCount);
-        } else {
+        else
             hyphenedText = ReplaceHardHyphensWithSoft(text, textCount);
-        }
 
         paraBuilder->Reset();
         paraBuilder->addText(hyphenedText.c_str());
@@ -583,6 +580,7 @@ int main(int argc, char** argv)
         const Area winArea = GetClientWindowArea(window);
 
         auto canvas = ResizeFrameBuffer(winArea.width, winArea.height);
+
         if (!canvas) continue;
 
         ClearFrameBuffers(canvas.get(), SkColors::kLtGray);
@@ -590,8 +588,6 @@ int main(int argc, char** argv)
         Layout(canvas.get(), winArea.width, winArea.height, texts[0], strlen(texts[0]));
 
         const int framesToRun = WaitForFrame();
-
-        //D sdf dgMessage("Frames to run: %d\n", esToRun);
 
         SwapFrameBuffers(window);
 
@@ -604,4 +600,4 @@ int main(int argc, char** argv)
 }
 
 
-// asdlf sd sd asd fsdf dsd sf
+// dsdfsd fasdf 
