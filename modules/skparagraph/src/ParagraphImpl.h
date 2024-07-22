@@ -143,6 +143,7 @@ public:
     void ensureUTF16Mapping();
     skia_private::TArray<TextIndex> countSurroundingGraphemes(TextRange textRange) const;
     bool isSoftHyphenBreakWithinRange(TextRange textRange) const;
+    void clearSoftHyphenBreakWithinRange(TextRange textRange);
 
     // TODO: Change the api name
     TextRange getControlRangeInsideText(TextRange textRange) const;

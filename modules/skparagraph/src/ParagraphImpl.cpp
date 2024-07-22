@@ -1170,6 +1170,15 @@ bool ParagraphImpl::isSoftHyphenBreakWithinRange(TextRange textRange) const {
     return false;
 }
 
+void ParagraphImpl::clearSoftHyphenBreakWithinRange(TextRange textRange) {
+    textRange = textRange.intersection({0, fText.size()});
+    for (auto index = textRange.start; index < textRange.end; ++index) {
+        if ((fCodeUnitProperties[index] & SkUnicode::CodeUnitFlags::kSoftHyphen) != 0) {
+            fCodeUnitProperties[index] &= (~SkUnicode::CodeUnitFlags::kSoftHyphen);
+        }
+    }
+}
+
 // TODO: Optimize
 TextRange ParagraphImpl::getControlRangeInsideText(TextRange textRange) const {
     textRange = textRange.intersection({0, fText.size()});

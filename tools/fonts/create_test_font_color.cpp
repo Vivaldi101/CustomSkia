@@ -521,6 +521,7 @@ static int WaitForFrame()
     return num_frames_to_run;
 }
 
+static const char* pText;
 int main(int argc, char** argv) 
 {
 	timeBeginPeriod(1);
@@ -538,8 +539,7 @@ int main(int argc, char** argv)
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    // TODO: Fix hyphening for white space separated words.
-    const char* texts[] = {"Softtttttttttttttttttttttttasd\u00ADHyphen."};
+    const char* texts[] = {"Soft ttttttttttttttttttttttt asd\u00ADHyphen."};
     //const char* texts[] = {"Hel\u00ADlo"};
 
     constexpr int w = 800, h = 600;
@@ -554,31 +554,30 @@ int main(int argc, char** argv)
 
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
-    std::string hyphenedTextTmp{texts[0]};
-    auto Layout = [&paraBuilder, &hyphenedTextTmp](SkCanvas* canvas, int w, int h, const char* text, size_t textCount) {
+    std::string text{texts[0]};
+    auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
         paraBuilder->Reset();
-        paraBuilder->addText(text);
+        paraBuilder->addText(text.c_str());
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
 
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
-        const auto softHyphenIndex = FindFirstSoftHyphen(text, textCount);
-        const auto hardHyphenIndex = FindFirstHardHyphen(hyphenedTextTmp.c_str(), hyphenedTextTmp.size());
+        const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
+        const auto hardHyphenIndex = FindFirstHardHyphen(text.c_str(), text.size());
         const auto softBoundary = paragraphImpl->getWordBoundary(softHyphenIndex);
         const auto hardBoundary = paragraphImpl->getWordBoundary(hardHyphenIndex);
-        const auto softRange = paragraphImpl->getControlRangeInsideText(softBoundary);
 
-        bool isBreak = false;
-        if ((softHyphenIndex != hardHyphenIndex) && !softRange.empty())
-            isBreak = paragraphImpl->isSoftHyphenBreakWithinRange(softRange);
+        const auto softLineNumber = paragraphImpl->getLineNumberAt(softBoundary.start);
+        const auto hardLineNumber = paragraphImpl->getLineNumberAt(hardBoundary.start);
+
+        bool isBreak = softLineNumber != hardLineNumber;
 
         std::string hyphenedText;
         if (isBreak)
-            hyphenedText = ReplaceSoftHyphensWithHard(text, textCount);
+            hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
         else
-            hyphenedText = ReplaceHardHyphensWithSoft(text, textCount);
+            hyphenedText = ReplaceHardHyphensWithSoft(text.c_str(), text.size());
 
-        hyphenedTextTmp = hyphenedText;
         paraBuilder->Reset();
         paraBuilder->addText(hyphenedText.c_str());
         paragraph = paraBuilder->Build();
@@ -600,7 +599,7 @@ int main(int argc, char** argv)
 
         ClearFrameBuffers(canvas.get(), SkColors::kLtGray);
 
-        Layout(canvas.get(), winArea.width, winArea.height, texts[0], strlen(texts[0]));
+        Layout(canvas.get(), winArea.width, winArea.height);
 
         const int framesToRun = WaitForFrame();
 
@@ -615,4 +614,4 @@ int main(int argc, char** argv)
 }
 
 
-// dsdfsd fadf sd fd fsdf d
+// dsdfsd  sd fd fsdf
