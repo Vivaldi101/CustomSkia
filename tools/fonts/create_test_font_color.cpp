@@ -555,9 +555,11 @@ int main(int argc, char** argv)
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
     std::string text{texts[0]};
-    auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
+    std::string hardHyphened{};
+    auto Layout = [&paraBuilder, &text, &hardHyphened](SkCanvas* canvas, int w, int h) {
         paraBuilder->Reset();
-        paraBuilder->addText(text.c_str());
+        paraBuilder->addText(hardHyphened.empty() ? text.c_str() : hardHyphened.c_str());
+
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
 
@@ -570,13 +572,14 @@ int main(int argc, char** argv)
         const auto softLineNumber = paragraphImpl->getLineNumberAt(softBoundary.start);
         const auto hardLineNumber = paragraphImpl->getLineNumberAt(hardBoundary.start);
 
-        bool isBreak = softLineNumber != hardLineNumber;
-
         std::string hyphenedText;
-        if (isBreak)
+        if (softLineNumber != hardLineNumber) {
             hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
-        else
+            hardHyphened = hyphenedText;
+        }
+        else {
             hyphenedText = ReplaceHardHyphensWithSoft(text.c_str(), text.size());
+        }
 
         paraBuilder->Reset();
         paraBuilder->addText(hyphenedText.c_str());
