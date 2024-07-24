@@ -542,7 +542,7 @@ int main(int argc, char** argv)
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    const char* texts[] = {"Softtttttttttttttttttttttttttttttttttt asd\u00ADHyphen"};
+    const char* texts[] = {"Softtttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
     //const char* texts[] = {"Softtttttttttttttttttttttttttttttttttt noHyphen."};
     //const char* texts[] = {"Hel\u00ADlo"};
 
@@ -563,10 +563,7 @@ int main(int argc, char** argv)
     // TODO: wp-semantics
     auto Layout = [&paraBuilder, &text, &hardHyphened](SkCanvas* canvas, int w, int h) {
         paraBuilder->Reset();
-        if (hardHyphened.empty())
-            paraBuilder->addText(text.c_str());
-        else
-            paraBuilder->addText(hardHyphened.c_str());
+        paraBuilder->addText(hardHyphened.empty() ? text.c_str() : hardHyphened.c_str());
 
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
@@ -587,7 +584,6 @@ int main(int argc, char** argv)
                 hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
                 hardHyphened = hyphenedText;
             }
-            // On the same line
             else {
                 hyphenedText = ReplaceHardHyphensWithSoft(text.c_str(), text.size());
             }
