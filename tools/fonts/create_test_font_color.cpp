@@ -560,37 +560,44 @@ int main(int argc, char** argv)
 
     std::string text{texts[0]};
     std::string hardHyphened{};
+    bool isBreak = false;
     // TODO: wp-semantics
-    auto Layout = [&paraBuilder, &text, &hardHyphened](SkCanvas* canvas, int w, int h) {
+    auto Layout = [&paraBuilder, &isBreak, &text, &hardHyphened](SkCanvas* canvas, int w, int h) {
         paraBuilder->Reset();
+        //paraBuilder->addText(hardHyphened.empty() ? text.c_str() : hardHyphened.c_str());
         paraBuilder->addText(hardHyphened.empty() ? text.c_str() : hardHyphened.c_str());
 
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
 
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
-        const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
 
-        if (isValidHyphenIndex(softHyphenIndex)) {
-            const auto preSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex);
+        if (!isBreak) { // No break on the previous layout
+            const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
+            const auto preSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex - 1);
             const auto postSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex + 2);  // TODO: Replace the magic 2 for the actual size of utf8 soft-hyphen array
 
             const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preSoftBoundary.start);
             const auto postHardBoundaryNumber = paragraphImpl->getLineNumberAt(postSoftBoundary.end);
 
-            std::string hyphenedText;
-            // Do the break
-            if (preSoftBoundaryNumber != postHardBoundaryNumber) {
-                hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
-                hardHyphened = hyphenedText;
-            }
-            else {
-                hyphenedText = ReplaceHardHyphensWithSoft(text.c_str(), text.size());
-            }
-
-            paraBuilder->Reset();
-            paraBuilder->addText(hyphenedText.c_str());
+            isBreak = preSoftBoundaryNumber != postHardBoundaryNumber;
         }
+
+        std::string hyphenedText;
+        // Do the break
+        if (isBreak) {
+            hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
+            hardHyphened = hyphenedText;
+            isBreak = false;
+        }
+        else {
+            hyphenedText = ReplaceHardHyphensWithSoft(text.c_str(), text.size());
+            hardHyphened.clear();
+        }
+
+        paraBuilder->Reset();
+        paraBuilder->addText(hyphenedText.c_str());
+
         paragraph = paraBuilder->Build();
         paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
