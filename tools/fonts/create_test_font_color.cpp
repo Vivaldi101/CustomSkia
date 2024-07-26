@@ -592,42 +592,25 @@ int main(int argc, char** argv)
             isBreak = preSoftBoundaryNumber != postHardBoundaryNumber;
         }
 
-        // Q: T
-        // Q => T || F = T
-        // wp(IF, R) = T
-        // T => wp(IF, R) = T
-        // F => wp(IF, R) = T
-        // T => T = T
-        // F => T = T
+        // isbreak => wp(hardHyphened = hyphenedText, hyphenedText == hardHyphened => isBreak && isValidHyphenIndex(softHyphenIndex))
+        // isbreak => (hyphenedText == hyphenedText => isBreak && isValidHyphenIndex(softHyphenIndex))
+        // isbreak => (!(hyphenedText == hyphenedText) || isBreak && isValidHyphenIndex(softHyphenIndex))
+        // isbreak => (hyphenedText != hyphenedText) || isBreak && isValidHyphenIndex(softHyphenIndex))
 
-        // Do the break
-        // R = isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened
-        // wp(IF, R)
-        // isbreak => wp(S1, R)
-        // !isbreak => wp(S2, R)
-        // =
-        // isbreak => wp(hardHyphened = hyphenedText, R)
-        // !isbreak => wp(empty(hardHyphened), R)
-        // =
-        // isbreak => wp(hardHyphened = hyphenedText, isBreak && isValidHyphenIndex(softHyphenIndex) => hyphenedText == hardHyphened)
-        // isbreak => (isbreak && isValidHyphenIndex(softHyphenIndex) => hyphenedText == hyphenedText)
-        // isbreak => !(isbreak && isValidHyphenIndex(softHyphenIndex) || hyphenedText == hyphenedText)
-        // isbreak => (!isbreak || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == hyphenedText)
-        // isbreak => (!isbreak || !isValidHyphenIndex(softHyphenIndex) || T)
-        // isbreak => (T)
-        // !isbreak || (T)
-        // (T)
-        // =
-        // !isbreak => wp(empty(hardHyphened), isBreak && isValidHyphenIndex(softHyphenIndex) => hyphenedText == hardHyphened)
-        // !isbreak => (isBreak && isValidHyphenIndex(softHyphenIndex) => hyphenedText == "")
-        // !isbreak => !(isBreak && isValidHyphenIndex(softHyphenIndex) || hyphenedText == "")
-        // !isbreak => (!isBreak || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == "")
-        // !isbreak => (!isBreak || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == "")
-        // isbreak || !isBreak || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == ""
-        // (isbreak || !isBreak) || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == ""
-        // (T) || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == ""
-        // (T)
+        // !isbreak || (F) || isBreak && isValidHyphenIndex(softHyphenIndex))
+        // !isbreak || isBreak && isValidHyphenIndex(softHyphenIndex))
+        // (!isbreak || isBreak) && isValidHyphenIndex(softHyphenIndex))
+        // (T) && isValidHyphenIndex(softHyphenIndex))
+
+        // isValidHyphenIndex(softHyphenIndex))
+
+        // isValidHyphenIndex => isbreak || !isbreak
+        // !isValidHyphenIndex || isbreak || !isbreak
+        // !isValidHyphenIndex || T
+        // T
+
         if (isBreak) {
+            assert(isValidHyphenIndex(softHyphenIndex));
             hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
             hardHyphened = hyphenedText;
         }
