@@ -543,9 +543,8 @@ int main(int argc, char** argv)
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    const char* texts[] = {"Softt\nttt ttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
     //const char* texts[] = {"Softtttttttttttttttttttttttttttttttttt noHyphen."};
-    //const char* texts[] = {"Hel\u00ADlo"};
+    const char* texts[] = {"Softt\nttt ttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
 
     constexpr int w = 800, h = 600;
     RECT windowRectangle = {0, 0, w, h};
@@ -566,22 +565,24 @@ int main(int argc, char** argv)
         bool isBreak = false;
 
         std::string hyphenedText = text;
+        const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
 
-        // No word breaking means no hyphening
-        // No hyphening means no word breaking
-        Iff(!isBreak, hyphenedText == text);
-        Iff(isBreak, hyphenedText != text);
+        // Hyphening iff soft-hyphen is found and word wrapping happens
+        Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
 
         paraBuilder->Reset();
-        paraBuilder->addText(hardHyphened.empty() ? text.c_str() : hardHyphened.c_str());
+        if (hardHyphened.empty())
+            paraBuilder->addText(text.c_str(), text.size());
+        else
+            paraBuilder->addText(hardHyphened.c_str(), hardHyphened.size());
+
 
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
 
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
 
-        if (!isBreak) { // No break on the previous layout
-            const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
+        if (isValidHyphenIndex(softHyphenIndex)) {
             const auto preSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex - 1);
             const auto postSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex + ArrayCount(softHyphen));
 
@@ -591,7 +592,41 @@ int main(int argc, char** argv)
             isBreak = preSoftBoundaryNumber != postHardBoundaryNumber;
         }
 
+        // Q: T
+        // Q => T || F = T
+        // wp(IF, R) = T
+        // T => wp(IF, R) = T
+        // F => wp(IF, R) = T
+        // T => T = T
+        // F => T = T
+
         // Do the break
+        // R = isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened
+        // wp(IF, R)
+        // isbreak => wp(S1, R)
+        // !isbreak => wp(S2, R)
+        // =
+        // isbreak => wp(hardHyphened = hyphenedText, R)
+        // !isbreak => wp(empty(hardHyphened), R)
+        // =
+        // isbreak => wp(hardHyphened = hyphenedText, isBreak && isValidHyphenIndex(softHyphenIndex) => hyphenedText == hardHyphened)
+        // isbreak => (isbreak && isValidHyphenIndex(softHyphenIndex) => hyphenedText == hyphenedText)
+        // isbreak => !(isbreak && isValidHyphenIndex(softHyphenIndex) || hyphenedText == hyphenedText)
+        // isbreak => (!isbreak || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == hyphenedText)
+        // isbreak => (!isbreak || !isValidHyphenIndex(softHyphenIndex) || T)
+        // isbreak => (T)
+        // !isbreak || (T)
+        // (T)
+        // =
+        // !isbreak => wp(empty(hardHyphened), isBreak && isValidHyphenIndex(softHyphenIndex) => hyphenedText == hardHyphened)
+        // !isbreak => (isBreak && isValidHyphenIndex(softHyphenIndex) => hyphenedText == "")
+        // !isbreak => !(isBreak && isValidHyphenIndex(softHyphenIndex) || hyphenedText == "")
+        // !isbreak => (!isBreak || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == "")
+        // !isbreak => (!isBreak || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == "")
+        // isbreak || !isBreak || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == ""
+        // (isbreak || !isBreak) || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == ""
+        // (T) || !isValidHyphenIndex(softHyphenIndex) || hyphenedText == ""
+        // (T)
         if (isBreak) {
             hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
             hardHyphened = hyphenedText;
@@ -601,17 +636,15 @@ int main(int argc, char** argv)
             hardHyphened.clear();
         }
 
+        // Finally add the hyphened text
         paraBuilder->Reset();
-        paraBuilder->addText(hyphenedText.c_str());
+        paraBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
         paragraph = paraBuilder->Build();
         paragraph->layout(w);
-
         paragraph->paint(canvas, 0, 0);
 
-        // No word breaking means no hyphening
-        // No hyphening means no word breaking
-        Iff(!isBreak, hyphenedText == text);
-        Iff(isBreak, hyphenedText != text);
+        // Hyphening iff soft-hyphen is found and word wrapping happens
+        Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
     };
 
     MSG msg;
