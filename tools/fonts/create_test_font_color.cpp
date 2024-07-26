@@ -526,6 +526,21 @@ static bool isValidHyphenIndex(size_t index) {
     return index != skia::textlayout::EMPTY_INDEX;
 }
 
+static size_t doSoftBreak(skia::textlayout::ParagraphImpl* paragraphImpl, size_t softHyphenIndex) {
+    assert(paragraphImpl);
+    assert(isValidHyphenIndex(softHyphenIndex));
+
+    const auto preSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex - 1);
+    const auto postSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex + ArrayCount(softHyphen));
+
+    const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preSoftBoundary.start);
+    const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(postSoftBoundary.end);
+
+    bool isBreak = preSoftBoundaryNumber != postSoftBoundaryNumber;
+
+    return isBreak;
+}
+
 int main(int argc, char** argv) 
 {
 	timeBeginPeriod(1);
@@ -544,7 +559,8 @@ int main(int argc, char** argv)
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
     //const char* texts[] = {"Softtttttttttttttttttttttttttttttttttt noHyphen."};
-    const char* texts[] = {"Softt\nttt ttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
+    const char* texts[] = {"Softt\u00ADtttttttttttttttttttttttttttttttttttttttttttt asdfoooooooooo bar Hyphen."};
+    //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttttttttttttttasd Hyphen."};
 
     constexpr int w = 800, h = 600;
     RECT windowRectangle = {0, 0, w, h};
@@ -566,48 +582,25 @@ int main(int argc, char** argv)
 
         std::string hyphenedText = text;
         const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
+        const auto hardHyphenIndex = FindFirstHardHyphen(hardHyphened.c_str(), hardHyphened.size());
 
         // Hyphening iff soft-hyphen is found and word wrapping happens
         Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
 
+        // Layout according to what was previously shown
         paraBuilder->Reset();
         if (hardHyphened.empty())
             paraBuilder->addText(text.c_str(), text.size());
         else
             paraBuilder->addText(hardHyphened.c_str(), hardHyphened.size());
 
-
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
-
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
 
         if (isValidHyphenIndex(softHyphenIndex)) {
-            const auto preSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex - 1);
-            const auto postSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex + ArrayCount(softHyphen));
-
-            const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preSoftBoundary.start);
-            const auto postHardBoundaryNumber = paragraphImpl->getLineNumberAt(postSoftBoundary.end);
-
-            isBreak = preSoftBoundaryNumber != postHardBoundaryNumber;
+            isBreak = doSoftBreak(paragraphImpl, softHyphenIndex);
         }
-
-        // isbreak => wp(hardHyphened = hyphenedText, hyphenedText == hardHyphened => isBreak && isValidHyphenIndex(softHyphenIndex))
-        // isbreak => (hyphenedText == hyphenedText => isBreak && isValidHyphenIndex(softHyphenIndex))
-        // isbreak => (!(hyphenedText == hyphenedText) || isBreak && isValidHyphenIndex(softHyphenIndex))
-        // isbreak => (hyphenedText != hyphenedText) || isBreak && isValidHyphenIndex(softHyphenIndex))
-
-        // !isbreak || (F) || isBreak && isValidHyphenIndex(softHyphenIndex))
-        // !isbreak || isBreak && isValidHyphenIndex(softHyphenIndex))
-        // (!isbreak || isBreak) && isValidHyphenIndex(softHyphenIndex))
-        // (T) && isValidHyphenIndex(softHyphenIndex))
-
-        // isValidHyphenIndex(softHyphenIndex))
-
-        // isValidHyphenIndex => isbreak || !isbreak
-        // !isValidHyphenIndex || isbreak || !isbreak
-        // !isValidHyphenIndex || T
-        // T
 
         if (isBreak) {
             assert(isValidHyphenIndex(softHyphenIndex));
@@ -626,8 +619,11 @@ int main(int argc, char** argv)
         paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
 
-        // Hyphening iff soft-hyphen is found and word wrapping happens
+        // Soft-Hyphening iff soft-hyphen is found and word wrapping happens
         Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
+
+        // Not soft-hyphening iff word wrapping does not happen
+        Implies(isValidHyphenIndex(hardHyphenIndex) && isBreak, true);
     };
 
     MSG msg;
