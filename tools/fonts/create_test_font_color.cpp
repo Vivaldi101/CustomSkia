@@ -526,15 +526,14 @@ static bool isValidHyphenIndex(size_t index) {
     return index != skia::textlayout::EMPTY_INDEX;
 }
 
-static size_t doSoftBreak(skia::textlayout::ParagraphImpl* paragraphImpl, size_t softHyphenIndex) {
+static bool doSoftBreak(skia::textlayout::ParagraphImpl* paragraphImpl, size_t softHyphenIndex) {
     assert(paragraphImpl);
     assert(isValidHyphenIndex(softHyphenIndex));
 
-    const auto preSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex - 1);
-    const auto postSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex + ArrayCount(softHyphen));
+    const auto softBoundary = paragraphImpl->findNextSoftbreakBoundary(softHyphenIndex);
 
-    const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preSoftBoundary.start);
-    const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(postSoftBoundary.end);
+    const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(softHyphenIndex);
+    const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(softBoundary);
 
     bool isBreak = preSoftBoundaryNumber != postSoftBoundaryNumber;
 
@@ -558,11 +557,11 @@ int main(int argc, char** argv)
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    //const char* texts[] = {"Softtttttttttttttttttttttttttttttttttt noHyphen."};
-    const char* texts[] = {"Softt\u00ADtttttttttttttttttttttttttttttttttttttttttttt asdfoooooooooo bar Hyphen."};
-    //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttttttttttttttasd Hyphen."};
+    //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
+    //const char* texts[] = {"FirstWord  foooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
+    const char* texts[] = {"Softttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
 
-    constexpr int w = 800, h = 600;
+    constexpr int w = 100, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
@@ -582,9 +581,8 @@ int main(int argc, char** argv)
 
         std::string hyphenedText = text;
         const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
-        const auto hardHyphenIndex = FindFirstHardHyphen(hardHyphened.c_str(), hardHyphened.size());
 
-        // Hyphening iff soft-hyphen is found and word wrapping happens
+        // Soft-Hyphening iff soft-hyphen is found and word wrapping happens
         Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
 
         // Layout according to what was previously shown
@@ -621,9 +619,6 @@ int main(int argc, char** argv)
 
         // Soft-Hyphening iff soft-hyphen is found and word wrapping happens
         Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
-
-        // Not soft-hyphening iff word wrapping does not happen
-        Implies(isValidHyphenIndex(hardHyphenIndex) && isBreak, true);
     };
 
     MSG msg;
@@ -655,4 +650,4 @@ int main(int argc, char** argv)
 }
 
 
-// dsdfsd  sd fd fsdf
+// ddsf asf sd fs
