@@ -558,8 +558,8 @@ int main(int argc, char** argv)
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
-    //const char* texts[] = {"FirstWord  foooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
-    const char* texts[] = {"Softttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
+    const char* texts[] = {"FirstWord  foooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
+    //const char* texts[] = {"Softttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
 
     constexpr int w = 100, h = 600;
     RECT windowRectangle = {0, 0, w, h};
@@ -607,7 +607,7 @@ int main(int argc, char** argv)
         }
         else {
             hyphenedText = ReplaceHardHyphensWithSoft(text.c_str(), text.size());
-            hardHyphened.clear();
+            //hardHyphened.clear();
         }
 
         // Finally add the hyphened text
