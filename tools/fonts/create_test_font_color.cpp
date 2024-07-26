@@ -55,14 +55,20 @@
     if (!(a)) Halt
 #define Invariant(a) \
     if (!(a)) Halt
-#define Implies(a, b) (!(a) || (b))
-#define Iff(a, b) ((a) == (b))
+
+#define Implies(a, b) if (!(!(a) || (b))) Halt
+#define Iff(a, b) if (!((a) == (b))) Halt
+
+namespace
+{
+    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
+    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
+}
 
 // Semantic compress the functions
 static size_t FindFirstSoftHyphen(const char utf8[], size_t utf8Units) 
 {
     std::string utf8String{utf8};
-    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
 
     const auto result = utf8String.find(softHyphen[0]);
     if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != softHyphen[1])
@@ -75,7 +81,6 @@ static size_t FindFirstSoftHyphen(const char utf8[], size_t utf8Units)
 static size_t FindFirstHardHyphen(const char utf8[], size_t utf8Units) 
 {
     std::string utf8String{utf8};
-    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
 
     const auto result = utf8String.find(hardHyphen[0]);
     if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != hardHyphen[1] ||
@@ -90,8 +95,6 @@ static size_t FindFirstHardHyphen(const char utf8[], size_t utf8Units)
 static std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units) {
     std::string utf8String{utf8};
     utf8String.resize(utf8String.size() + 1);
-    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
-    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
 
     const auto shiftIndex = utf8String.find(softHyphen[0]);
     if (shiftIndex == utf8String.npos || (uint8_t)utf8String[shiftIndex + 1] != softHyphen[1])
@@ -107,8 +110,6 @@ static std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Unit
 // TODO: Currently only replaces the first occurence
 static std::string ReplaceHardHyphensWithSoft(const char utf8[], size_t utf8Units) {
     std::string utf8String{utf8};
-    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
-    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
 
     const auto shiftIndex = utf8String.find(hardHyphen[0]);
     if (shiftIndex == utf8String.npos || (uint8_t)utf8String[shiftIndex + 1] != hardHyphen[1] ||
@@ -542,7 +543,7 @@ int main(int argc, char** argv)
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    const char* texts[] = {"Softtttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
+    const char* texts[] = {"Softt\nttt ttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
     //const char* texts[] = {"Softtttttttttttttttttttttttttttttttttt noHyphen."};
     //const char* texts[] = {"Hel\u00ADlo"};
 
@@ -559,12 +560,19 @@ int main(int argc, char** argv)
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
     std::string text{texts[0]};
-    std::string hardHyphened{};
-    bool isBreak = false;
+    std::string hardHyphened;
     // TODO: wp-semantics
-    auto Layout = [&paraBuilder, &isBreak, &text, &hardHyphened](SkCanvas* canvas, int w, int h) {
+    auto Layout = [&paraBuilder, &text, &hardHyphened](SkCanvas* canvas, int w, int h) {
+        bool isBreak = false;
+
+        std::string hyphenedText = text;
+
+        // No word breaking means no hyphening
+        // No hyphening means no word breaking
+        Iff(!isBreak, hyphenedText == text);
+        Iff(isBreak, hyphenedText != text);
+
         paraBuilder->Reset();
-        //paraBuilder->addText(hardHyphened.empty() ? text.c_str() : hardHyphened.c_str());
         paraBuilder->addText(hardHyphened.empty() ? text.c_str() : hardHyphened.c_str());
 
         auto paragraph = paraBuilder->Build();
@@ -575,7 +583,7 @@ int main(int argc, char** argv)
         if (!isBreak) { // No break on the previous layout
             const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
             const auto preSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex - 1);
-            const auto postSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex + 2);  // TODO: Replace the magic 2 for the actual size of utf8 soft-hyphen array
+            const auto postSoftBoundary = paragraphImpl->getWordBoundary(softHyphenIndex + ArrayCount(softHyphen));
 
             const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preSoftBoundary.start);
             const auto postHardBoundaryNumber = paragraphImpl->getLineNumberAt(postSoftBoundary.end);
@@ -583,12 +591,10 @@ int main(int argc, char** argv)
             isBreak = preSoftBoundaryNumber != postHardBoundaryNumber;
         }
 
-        std::string hyphenedText;
         // Do the break
         if (isBreak) {
             hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
             hardHyphened = hyphenedText;
-            isBreak = false;
         }
         else {
             hyphenedText = ReplaceHardHyphensWithSoft(text.c_str(), text.size());
@@ -597,10 +603,15 @@ int main(int argc, char** argv)
 
         paraBuilder->Reset();
         paraBuilder->addText(hyphenedText.c_str());
-
         paragraph = paraBuilder->Build();
         paragraph->layout(w);
+
         paragraph->paint(canvas, 0, 0);
+
+        // No word breaking means no hyphening
+        // No hyphening means no word breaking
+        Iff(!isBreak, hyphenedText == text);
+        Iff(isBreak, hyphenedText != text);
     };
 
     MSG msg;
