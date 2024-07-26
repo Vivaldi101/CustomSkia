@@ -558,7 +558,7 @@ int main(int argc, char** argv)
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
-    const char* texts[] = {"FirstWord  foooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
+    const char* texts[] = {"FirstWord  fooooooooooooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
     //const char* texts[] = {"Softttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
 
     constexpr int w = 100, h = 600;
@@ -579,18 +579,16 @@ int main(int argc, char** argv)
     auto Layout = [&paraBuilder, &text, &hardHyphened](SkCanvas* canvas, int w, int h) {
         bool isBreak = false;
 
-        std::string hyphenedText = text;
         const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
 
-        // Soft-Hyphening iff soft-hyphen is found and word wrapping happens
-        Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
-
-        // Layout according to what was previously shown
+        // TODO: Instead of this, figure out how wide is the added hyphen and add it to the layout after soft => hard hyphening
         paraBuilder->Reset();
-        if (hardHyphened.empty())
+        if (hardHyphened.empty()) {
             paraBuilder->addText(text.c_str(), text.size());
-        else
+        }
+        else {
             paraBuilder->addText(hardHyphened.c_str(), hardHyphened.size());
+        }
 
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
@@ -600,6 +598,7 @@ int main(int argc, char** argv)
             isBreak = doSoftBreak(paragraphImpl, softHyphenIndex);
         }
 
+        std::string hyphenedText;
         if (isBreak) {
             assert(isValidHyphenIndex(softHyphenIndex));
             hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size());
@@ -607,7 +606,6 @@ int main(int argc, char** argv)
         }
         else {
             hyphenedText = ReplaceHardHyphensWithSoft(text.c_str(), text.size());
-            //hardHyphened.clear();
         }
 
         // Finally add the hyphened text
