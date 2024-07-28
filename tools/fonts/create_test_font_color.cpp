@@ -42,6 +42,7 @@
 #pragma comment(lib, "skparagraph")
 #pragma comment(lib, "winmm")
 
+typedef size_t usize;
 
 #define ArrayCount(a) sizeof((a)) / sizeof(*(a))
 
@@ -56,8 +57,17 @@
 #define Invariant(a) \
     if (!(a)) Halt
 
-#define Implies(a, b) if (!(!(a) || (b))) Halt
-#define Iff(a, b) if (!((a) == (b))) Halt
+#define Implies(a, b) (!(a) || (b))
+#define Iff(a, b) ((a) == (b))
+
+#define ForI(b, n) for(u32 i = (b); i < (n); ++i)
+#define ForJ(b, n) for(u32 j = (b); j < (n); ++j)
+#define ForK(b, n) for(u32 k = (b); k < (n); ++k)
+
+#define EQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { return true; } } return false; }()
+#define UQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if (!(p)) { return false; } } return true; }()
+#define CQ(n, p) [&]() -> usize {usize counter = 0; for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { ++counter; } } return counter; }()
+
 
 namespace
 {
@@ -66,6 +76,7 @@ namespace
 }
 
 // Semantic compress the functions
+// TODO: Use std::string functions where able
 static size_t FindFirstSoftHyphen(const char utf8[], size_t utf8Units) 
 {
     std::string utf8String{utf8};
@@ -73,6 +84,23 @@ static size_t FindFirstSoftHyphen(const char utf8[], size_t utf8Units)
     const auto result = utf8String.find(softHyphen[0]);
     if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != softHyphen[1])
         return skia::textlayout::EMPTY_INDEX;
+
+    return result;
+}
+
+// TODO: wp-semantics
+static size_t GetSoftHyphenCount(const char utf8[], size_t utf8Units) 
+{
+    size_t result = 0;
+    std::string utf8String{utf8};
+
+    size_t i = utf8String.find(softHyphen[0]);
+    do {
+        if (i == utf8String.npos || (uint8_t)utf8String[i + 1] != softHyphen[1]) {
+            break;
+        }
+        ++result;
+    } while ((i = utf8String.find(softHyphen[0], i + 1)) != utf8String.npos);
 
     return result;
 }
@@ -580,6 +608,7 @@ int main(int argc, char** argv)
         bool isBreak = false;
 
         const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
+        const auto softHyphenCount = GetSoftHyphenCount(text.c_str(), text.size());
 
         // TODO: Instead of this, figure out how wide is the added hyphen and add it to the layout after soft => hard hyphening
         paraBuilder->Reset();
@@ -615,8 +644,17 @@ int main(int argc, char** argv)
         paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
 
+        // Old post-condition for a single soft-hyphen
         // Do soft-hyphening iff soft-hyphen is found and word wrapping happens
-        Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
+        Post(Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened));
+
+        const auto isAnyHardHyphen = [&hyphenedText](usize i) 
+        { return (uint8_t)hyphenedText[i] == hardHyphen[0] ||
+                 (uint8_t)hyphenedText[i] == hardHyphen[1] ||
+                 (uint8_t)hyphenedText[i] == hardHyphen[2]; };
+
+        // Do soft-hyphening iff soft-hyphen is found and word wrapping happens
+        Post(Iff(isBreak, CQ(hyphenedText.size(), isAnyHardHyphen(i__)) == 3*softHyphenCount));
     };
 
     MSG msg;
