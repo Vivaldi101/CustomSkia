@@ -89,7 +89,8 @@ static size_t FindFirstSoftHyphen(const char utf8[], size_t utf8Units)
 }
 
 // TODO: wp-semantics
-static size_t GetSoftHyphenCount(const char utf8[], size_t utf8Units) 
+// TODO: Optimize
+static size_t FindSoftHyphenCount(const char utf8[], size_t utf8Units) 
 {
     size_t result = 0;
     std::string utf8String{utf8};
@@ -608,7 +609,7 @@ int main(int argc, char** argv)
         bool isBreak = false;
 
         const auto softHyphenIndex = FindFirstSoftHyphen(text.c_str(), text.size());
-        const auto softHyphenCount = GetSoftHyphenCount(text.c_str(), text.size());
+        const auto softHyphenCount = FindSoftHyphenCount(text.c_str(), text.size());
 
         // TODO: Instead of this, figure out how wide is the added hyphen and add it to the layout after soft => hard hyphening
         paraBuilder->Reset();
