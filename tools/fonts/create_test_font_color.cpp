@@ -72,7 +72,7 @@ static size_t FindFirstSoftHyphen(const char utf8[], size_t utf8Units)
 
     const auto result = utf8String.find(softHyphen[0]);
     if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != softHyphen[1])
-        return -1;
+        return skia::textlayout::EMPTY_INDEX;
 
     return result;
 }
@@ -85,7 +85,7 @@ static size_t FindFirstHardHyphen(const char utf8[], size_t utf8Units)
     const auto result = utf8String.find(hardHyphen[0]);
     if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != hardHyphen[1] ||
         (uint8_t)utf8String[result + 2] != hardHyphen[2])
-        return -1;
+        return skia::textlayout::EMPTY_INDEX;
 
     return result;
 }
@@ -615,7 +615,7 @@ int main(int argc, char** argv)
         paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
 
-        // Soft-Hyphening iff soft-hyphen is found and word wrapping happens
+        // Do soft-hyphening iff soft-hyphen is found and word wrapping happens
         Iff(isBreak && isValidHyphenIndex(softHyphenIndex), hyphenedText == hardHyphened);
     };
 
