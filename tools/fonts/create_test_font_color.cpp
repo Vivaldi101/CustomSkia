@@ -233,8 +233,9 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
                 }
             }
         }
-        //Post(Implies(isHyphenBreak, IsCharHardHyphen(converted, hyphenIndex)));
-        //Post(Implies(!isHyphenBreak, IsCharSoftHyphen(converted, hyphenIndex)));
+
+        Post(Iff(isHyphenBreak, IsCharHardHyphen(converted, hyphenIndex)));
+        Post(Iff(!isHyphenBreak, IsCharSoftHyphen(converted, hyphenIndex)));
     }
 
     return converted;
