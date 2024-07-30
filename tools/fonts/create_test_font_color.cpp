@@ -35,7 +35,8 @@
 #include "modules/skparagraph/include/TextStyle.h"
 #include <cmath>
 #include <cassert>
-#include <unordered_map>
+#include <vector>
+#include <algorithm>
 
 #include <Windows.h>
 #include <timeapi.h>
@@ -69,9 +70,9 @@ typedef size_t usize;
 #define UQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if (!(p)) { return false; } } return true; }()
 #define CQ(n, p) [&]() -> usize {usize counter = 0; for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { ++counter; } } return counter; }()
 
-
 namespace
 {
+    constexpr size_t EmptyIndex = skia::textlayout::EMPTY_INDEX;
     // Maybe we can just use the unicode symbols to find?
     // TODO: Use std::arrays for these
     constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
@@ -94,6 +95,12 @@ namespace
     const auto IsAnySoftHyphen = [](const std::string& hyphenedText, size_t i)
     { return (uint8_t)hyphenedText[i] == softHyphen[0] ||
         (uint8_t)hyphenedText[i] == softHyphen[1]; };
+
+    struct HyphenData
+    {
+        size_t softIndex;
+        bool isSoftBreak;   // True if soft => hard, false hard => soft
+    };
 }
 
 // Semantic compress the functions
@@ -143,7 +150,7 @@ static size_t FindFirstHardHyphen(const char utf8[], size_t utf8Units)
     return result;
 }
 
-// TODO: ass in just the std string
+// TODO: Pass in just the std string
 // TODO: Harden indexing with wp-semantics
 static std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units, size_t shiftIndex) {
     std::string utf8String{utf8};
@@ -181,27 +188,35 @@ static bool IsValidHyphenIndex(size_t index) {
     return index != skia::textlayout::EMPTY_INDEX;
 }
 
+// Hello, Vihma
+
 // TODO: wp-semantics
-static void GetAllSoftBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std::unordered_map<size_t, bool>& hyphenMap, const std::string& text) {
+static void GetAllSoftBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std::vector<HyphenData>& hyphens, const std::string& text) {
     size_t softHyphenIndex = 0;
     const char* p = text.c_str();
     while (IsValidHyphenIndex(softHyphenIndex = FindSoftHyphen(p))) {
-        const auto softBoundary = paragraphImpl->findNextSoftbreakBoundary(softHyphenIndex);
 
-        const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(softHyphenIndex);
-        const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(softBoundary);
+        const auto preIndex = softHyphenIndex + (p - text.c_str());
+        const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preIndex);
+        const auto postIndex = paragraphImpl->findNextSoftbreakBoundary(preIndex);
+        const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(postIndex);
 
-        hyphenMap[softHyphenIndex + (p - text.c_str())] = preSoftBoundaryNumber != postSoftBoundaryNumber;
+        //hyphens[softHyphenIndex + (p - text.c_str())] = preSoftBoundaryNumber != postSoftBoundaryNumber;
+        hyphens.push_back(HyphenData{preIndex, preSoftBoundaryNumber != postSoftBoundaryNumber});
 
         p += (softHyphenIndex + ArrayCount(softHyphen));
     }
+
+    for (const auto& hyphen : hyphens) {
+        assert(IsCharSoftHyphen(text, hyphen.softIndex));
+    }
 }
 
-static std::string ConvertSoftBreaks(const std::unordered_map<size_t, bool>& hyphenMap, const std::string& text) {
+static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std::string& text) {
     std::string converted = text;
-    for (auto hyphen : hyphenMap) {
-        const auto hyphenIndex = hyphen.first;
-        const auto isHyphenBreak = hyphen.second;
+    for (auto hyphen : hyphens) {
+        const auto hyphenIndex = hyphen.softIndex;
+        const auto isHyphenBreak = hyphen.isSoftBreak;
         if (isHyphenBreak) {
             assert(IsValidHyphenIndex(hyphenIndex));
             converted = ReplaceSoftHyphensWithHard(converted.c_str(), converted.size(), hyphenIndex);
@@ -210,12 +225,11 @@ static std::string ConvertSoftBreaks(const std::unordered_map<size_t, bool>& hyp
             converted = ReplaceHardHyphensWithSoft(converted.c_str(), converted.size(), hyphenIndex);
         }
         
-        Post(Iff(isHyphenBreak, CQ(converted.size(), IsAnyHardHyphen(converted, i__)) == ArrayCount(hardHyphen)));
-        Post(Iff(!isHyphenBreak, CQ(converted.size(), IsAnySoftHyphen(converted, i__)) == ArrayCount(softHyphen)));
-
         Post(Iff(isHyphenBreak, IsCharHardHyphen(converted, hyphenIndex)));
         Post(Iff(!isHyphenBreak, IsCharSoftHyphen(converted, hyphenIndex)));
     }
+
+    Pre(UQ(hyphens.size() - 1, hyphens[i__].softIndex < hyphens[i__ + 1].softIndex));
 
     return converted;
 }
@@ -498,10 +512,10 @@ int main(int argc, char** argv)
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
     //const char* texts[] = {"FirstWord  fooooooooooooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
-    const char* texts[] = {"This is aaaaaaaaa Soft-tttttttttttttttttttttttttttttttttttttttttttttasd\u00ADHyphen."};
+    const char* texts[] = {"Thisis aaaaaaaaaSoftttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
     //const char* texts[] = {"Softttttttttttttttttttttttttttttttt tttttttttttttttttttttttttttttttt noHyphen."};
 
-    constexpr int w = 800, h = 600;
+    constexpr int w = 400, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
@@ -525,9 +539,11 @@ int main(int argc, char** argv)
         paragraph->layout(w);
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
 
-        std::unordered_map<size_t, bool> hyphenMap;
-        GetAllSoftBreaks(paragraphImpl, hyphenMap, text);
-        const std::string hyphenedText = ConvertSoftBreaks(hyphenMap, previousText);
+        std::vector<HyphenData> hyphens;
+
+        GetAllSoftBreaks(paragraphImpl, hyphens, text);
+        const std::string hyphenedText = ConvertSoftBreaks(hyphens, previousText);
+
         previousText = hyphenedText;
 
         // Finally add the hyphened text
