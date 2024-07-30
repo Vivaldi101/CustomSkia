@@ -225,11 +225,17 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
             converted = ReplaceHardHyphensWithSoft(converted.c_str(), converted.size(), hyphenIndex);
         }
         
-        Post(Iff(isHyphenBreak, IsCharHardHyphen(converted, hyphenIndex)));
-        Post(Iff(!isHyphenBreak, IsCharSoftHyphen(converted, hyphenIndex)));
+        for (size_t i = 0; i < hyphens.size(); ++i) {
+            if (hyphens[i].isSoftBreak) {
+                // Earliest when we do soft => hard break
+                for (size_t j = i + 1; j < hyphens.size(); ++j) {
+                    ++hyphens[j].softIndex;
+                }
+            }
+        }
+        //Post(Implies(isHyphenBreak, IsCharHardHyphen(converted, hyphenIndex)));
+        //Post(Implies(!isHyphenBreak, IsCharSoftHyphen(converted, hyphenIndex)));
     }
-
-    Pre(UQ(hyphens.size() - 1, hyphens[i__].softIndex < hyphens[i__ + 1].softIndex));
 
     return converted;
 }
@@ -512,8 +518,10 @@ int main(int argc, char** argv)
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
     //const char* texts[] = {"FirstWord  fooooooooooooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
-    const char* texts[] = {"Thisis aaaaaaaaaSoftttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
+    //const char* texts[] = {"Thisis aaaaaaaaaSoftttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
     //const char* texts[] = {"Softttttttttttttttttttttttttttttttt tttttttttttttttttttttttttttttttt noHyphen."};
+
+    const char* texts[] = {"bbbbbbbbbb\u00ADcccccccccc\u00ADaaaaaaaaaaaaa"};
 
     constexpr int w = 400, h = 600;
     RECT windowRectangle = {0, 0, w, h};
@@ -542,6 +550,7 @@ int main(int argc, char** argv)
         std::vector<HyphenData> hyphens;
 
         GetAllSoftBreaks(paragraphImpl, hyphens, text);
+
         const std::string hyphenedText = ConvertSoftBreaks(hyphens, previousText);
 
         previousText = hyphenedText;
