@@ -214,26 +214,21 @@ static void GetAllSoftBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std
 
 static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std::string& text) {
     std::string converted = text;
-    for (auto hyphen : hyphens) {
-        const auto hyphenIndex = hyphen.softIndex;
-        const auto isHyphenBreak = hyphen.isSoftBreak;
+    for (size_t i = 0; i < hyphens.size(); ++i) {
+        const auto hyphenIndex = hyphens[i].softIndex;
+        const auto isHyphenBreak = hyphens[i].isSoftBreak;
         if (isHyphenBreak) {
             assert(IsValidHyphenIndex(hyphenIndex));
             converted = ReplaceSoftHyphensWithHard(converted.c_str(), converted.size(), hyphenIndex);
+            // Earliest when we do soft => hard break
+            for (size_t j = i + 1; j < hyphens.size(); ++j) {
+                ++hyphens[j].softIndex;
+            }
         }
         else {
             converted = ReplaceHardHyphensWithSoft(converted.c_str(), converted.size(), hyphenIndex);
         }
         
-        for (size_t i = 0; i < hyphens.size(); ++i) {
-            if (hyphens[i].isSoftBreak) {
-                // Earliest when we do soft => hard break
-                for (size_t j = i + 1; j < hyphens.size(); ++j) {
-                    ++hyphens[j].softIndex;
-                }
-            }
-        }
-
         Post(Iff(isHyphenBreak, IsCharHardHyphen(converted, hyphenIndex)));
         Post(Iff(!isHyphenBreak, IsCharSoftHyphen(converted, hyphenIndex)));
     }
