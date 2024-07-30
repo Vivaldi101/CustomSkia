@@ -73,6 +73,7 @@ typedef size_t usize;
 namespace
 {
     // Maybe we can just use the unicode symbols to find?
+    // TODO: Use std::arrays for these
     constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
     constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
 
@@ -80,6 +81,9 @@ namespace
     { return (uint8_t)hyphenedText[i] == hardHyphen[0] ||
         (uint8_t)hyphenedText[i] == hardHyphen[1] ||
         (uint8_t)hyphenedText[i] == hardHyphen[2]; };
+    const auto isAnySoftHyphen = [](const std::string& hyphenedText, size_t i)
+    { return (uint8_t)hyphenedText[i] == softHyphen[0] ||
+        (uint8_t)hyphenedText[i] == softHyphen[1]; };
 }
 
 // Semantic compress the functions
@@ -195,6 +199,12 @@ static std::string ConvertSoftBreaks(const std::unordered_map<size_t, bool>& hyp
         else {
             converted = ReplaceHardHyphensWithSoft(converted.c_str(), converted.size(), hyphenIndex);
         }
+        
+        Post(Iff(isHyphenBreak, CQ(converted.size(), isAnyHardHyphen(converted, i__)) == ArrayCount(hardHyphen)));
+        Post(Iff(!isHyphenBreak, CQ(converted.size(), isAnySoftHyphen(converted, i__)) == ArrayCount(softHyphen)));
+
+        Post(Iff(isHyphenBreak, (uint8_t)converted[hyphenIndex] == hardHyphen[0]));
+        Post(Iff(!isHyphenBreak, (uint8_t)converted[hyphenIndex] == softHyphen[0]));
     }
 
     return converted;
@@ -478,7 +488,7 @@ int main(int argc, char** argv)
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
     //const char* texts[] = {"FirstWord  fooooooooooooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
-    const char* texts[] = {"This is aaaaaaaaa Softtttttttttttttttttttttttttttttttttttttttttttttasd\u00ADHyphen."};
+    const char* texts[] = {"This is aaaaaaaaa Soft-tttttttttttttttttttttttttttttttttttttttttttttasd\u00ADHyphen."};
     //const char* texts[] = {"Softttttttttttttttttttttttttttttttt tttttttttttttttttttttttttttttttt noHyphen."};
 
     constexpr int w = 800, h = 600;
