@@ -77,11 +77,21 @@ namespace
     constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
     constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
 
-    const auto isAnyHardHyphen = [](const std::string& hyphenedText, size_t i)
+    // TODO: wp-semantics
+    bool IsCharSoftHyphen(const std::string& text, size_t i) {
+        return (uint8_t)text[i] == softHyphen[0] && (uint8_t)text[i+1] == softHyphen[1];
+    };
+    // TODO: wp-semantics
+    bool IsCharHardHyphen(const std::string& text, size_t i) {
+        return (uint8_t)text[i] == hardHyphen[0] && (uint8_t)text[i+1] == hardHyphen[1] && (uint8_t)text[i+2] == hardHyphen[2];
+    };
+
+    // TODO: Remove
+    const auto IsAnyHardHyphen = [](const std::string& hyphenedText, size_t i)
     { return (uint8_t)hyphenedText[i] == hardHyphen[0] ||
         (uint8_t)hyphenedText[i] == hardHyphen[1] ||
         (uint8_t)hyphenedText[i] == hardHyphen[2]; };
-    const auto isAnySoftHyphen = [](const std::string& hyphenedText, size_t i)
+    const auto IsAnySoftHyphen = [](const std::string& hyphenedText, size_t i)
     { return (uint8_t)hyphenedText[i] == softHyphen[0] ||
         (uint8_t)hyphenedText[i] == softHyphen[1]; };
 }
@@ -200,11 +210,11 @@ static std::string ConvertSoftBreaks(const std::unordered_map<size_t, bool>& hyp
             converted = ReplaceHardHyphensWithSoft(converted.c_str(), converted.size(), hyphenIndex);
         }
         
-        Post(Iff(isHyphenBreak, CQ(converted.size(), isAnyHardHyphen(converted, i__)) == ArrayCount(hardHyphen)));
-        Post(Iff(!isHyphenBreak, CQ(converted.size(), isAnySoftHyphen(converted, i__)) == ArrayCount(softHyphen)));
+        Post(Iff(isHyphenBreak, CQ(converted.size(), IsAnyHardHyphen(converted, i__)) == ArrayCount(hardHyphen)));
+        Post(Iff(!isHyphenBreak, CQ(converted.size(), IsAnySoftHyphen(converted, i__)) == ArrayCount(softHyphen)));
 
-        Post(Iff(isHyphenBreak, (uint8_t)converted[hyphenIndex] == hardHyphen[0]));
-        Post(Iff(!isHyphenBreak, (uint8_t)converted[hyphenIndex] == softHyphen[0]));
+        Post(Iff(isHyphenBreak, IsCharHardHyphen(converted, hyphenIndex)));
+        Post(Iff(!isHyphenBreak, IsCharSoftHyphen(converted, hyphenIndex)));
     }
 
     return converted;
