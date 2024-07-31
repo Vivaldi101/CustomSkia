@@ -117,26 +117,6 @@ static size_t FindSoftHyphen(const char* utf8)
     return result;
 }
 
-// TODO: wp-semantics
-// TODO: Optimize
-#if 0
-static size_t FindSoftHyphenCount(const char utf8[], size_t utf8Units) 
-{
-    size_t result = 0;
-    std::string utf8String{utf8};
-
-    size_t i = utf8String.find(softHyphen[0]);
-    do {
-        if (i == utf8String.npos || (uint8_t)utf8String[i + 1] != softHyphen[1]) {
-            break;
-        }
-        ++result;
-    } while ((i = utf8String.find(softHyphen[0], i + 1)) != utf8String.npos);
-
-    return result;
-}
-#endif
-
 // Semantic compress the functions
 static size_t FindFirstHardHyphen(const char utf8[], size_t utf8Units) 
 {
@@ -201,15 +181,12 @@ static void GetAllSoftBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std
         const auto postIndex = paragraphImpl->findNextSoftbreakBoundary(preIndex);
         const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(postIndex);
 
-        //hyphens[softHyphenIndex + (p - text.c_str())] = preSoftBoundaryNumber != postSoftBoundaryNumber;
         hyphens.push_back(HyphenData{preIndex, preSoftBoundaryNumber != postSoftBoundaryNumber});
 
         p += (softHyphenIndex + ArrayCount(softHyphen));
     }
 
-    for (const auto& hyphen : hyphens) {
-        assert(IsCharSoftHyphen(text, hyphen.softIndex));
-    }
+    Post(UQ(hyphens.size(), IsCharSoftHyphen(text, hyphens[i__].softIndex)));
 }
 
 static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std::string& text) {
