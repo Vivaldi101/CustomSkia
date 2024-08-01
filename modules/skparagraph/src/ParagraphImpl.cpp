@@ -674,18 +674,6 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
     fIdeographicBaseline = fLines.empty() ? fEmptyMetrics.ideographicBaseline() : fLines.front().ideographicBaseline();
     fExceededMaxLines = textWrapper.exceededMaxLines();
     fHasWordBreaks = true;
-
-    // TODO: wp semantics
-    // TODO: semantic compression into function
-    // TODO: dont need to test for line size > 1?
-    if (fLines.size() > 1) {
-        for (size_t i = 0; i + 1 != fCodeUnitProperties.size(); ++i) {
-            if (((fCodeUnitProperties[i] == SkUnicode::CodeUnitFlags::kControl)) &&
-                (fCodeUnitProperties[i + 1] & SkUnicode::CodeUnitFlags::kSoftLineBreakBefore) != 0) {
-                fCodeUnitProperties[i + 1] |= SkUnicode::CodeUnitFlags::kSoftHyphen;
-            }
-        }
-    }
 }
 
 void ParagraphImpl::formatLines(SkScalar maxWidth) {
@@ -1201,7 +1189,7 @@ TextIndex ParagraphImpl::findPreviousGraphemeBoundary(TextIndex utf8) const {
 
 TextIndex ParagraphImpl::findNextSoftbreakBoundary(TextIndex utf8) const {
     const auto mask = SkUnicode::CodeUnitFlags::kSoftLineBreakBefore;
-    while (utf8 > 0 &&
+    while (utf8 < fText.size() &&
           (fCodeUnitProperties[utf8] & mask) == 0) {
         ++utf8;
     }

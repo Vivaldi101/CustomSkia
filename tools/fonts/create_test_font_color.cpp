@@ -171,9 +171,10 @@ static bool IsValidHyphenIndex(size_t index) {
 // Hello, Vihma
 
 // TODO: wp-semantics
-static void GetAllSoftBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std::vector<HyphenData>& hyphens, const std::string& text) {
+static void FindAllSoftBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std::vector<HyphenData>& hyphens, const std::string& text) {
     size_t softHyphenIndex = 0;
     const char* p = text.c_str();
+
     while (IsValidHyphenIndex(softHyphenIndex = FindSoftHyphen(p))) {
 
         const auto preIndex = softHyphenIndex + (p - text.c_str());
@@ -522,17 +523,12 @@ int main(int argc, char** argv)
 
         std::vector<HyphenData> hyphens;
 
-        GetAllSoftBreaks(paragraphImpl, hyphens, text);
+        FindAllSoftBreaks(paragraphImpl, hyphens, text);
 
         const std::string hyphenedText = ConvertSoftBreaks(hyphens, previousText);
 
         previousText = hyphenedText;
 
-        // Finally add the hyphened text
-        paraBuilder->Reset();
-        paraBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
-        paragraph = paraBuilder->Build();
-        paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
     };
 
