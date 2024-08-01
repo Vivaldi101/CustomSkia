@@ -187,6 +187,7 @@ static void FindAllSoftBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, st
         p += (softHyphenIndex + ArrayCount(softHyphen));
     }
 
+    // Every hyphen contains an index to an actual soft-hyphen utf8 code units
     Post(UQ(hyphens.size(), IsCharSoftHyphen(text, hyphens[i__].softIndex)));
 }
 
@@ -198,7 +199,7 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
         if (isHyphenBreak) {
             assert(IsValidHyphenIndex(hyphenIndex));
             converted = ReplaceSoftHyphensWithHard(converted.c_str(), converted.size(), hyphenIndex);
-            // Earliest when we do soft => hard break
+            // Shift every following index by one so that the hard-hyphen fits in
             for (size_t j = i + 1; j < hyphens.size(); ++j) {
                 ++hyphens[j].softIndex;
             }
@@ -207,7 +208,9 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
             converted = ReplaceHardHyphensWithSoft(converted.c_str(), converted.size(), hyphenIndex);
         }
         
+        // Text contains hard-hyphens at hyphen index, iff it has been broken at that point
         Post(Iff(isHyphenBreak, IsCharHardHyphen(converted, hyphenIndex)));
+        // Text does not contain hard-hyphens at hyphen index, iff it has not been broken at that point
         Post(Iff(!isHyphenBreak, IsCharSoftHyphen(converted, hyphenIndex)));
     }
 
@@ -513,7 +516,6 @@ int main(int argc, char** argv)
     std::string previousText = text;
     // TODO: wp-semantics
     auto Layout = [&paraBuilder, &text, &previousText](SkCanvas* canvas, int w, int h) {
-        // TODO: Instead of this, figure out how wide is the added hyphen and add it to the layout after soft => hard hyphening
         paraBuilder->Reset();
         paraBuilder->addText(previousText.c_str(), previousText.size());
 
@@ -544,7 +546,7 @@ int main(int argc, char** argv)
 
         if (!canvas) continue;
 
-        ClearFrameBuffers(canvas.get(), SkColors::kLtGray);
+        ClearFrameBuffers(canvas.get(), SkColors::kDkGray);
 
         Layout(canvas.get(), winArea.width, winArea.height);
 
