@@ -531,6 +531,11 @@ int main(int argc, char** argv)
 
         previousText = hyphenedText;
 
+        paraBuilder->Reset();
+        paraBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
+        paragraph = paraBuilder->Build();
+        paragraph->layout(w);
+
         paragraph->paint(canvas, 0, 0);
     };
 
