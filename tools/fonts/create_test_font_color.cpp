@@ -195,6 +195,7 @@ static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphI
     const char* p = text.c_str();
 
     while (IsValidHyphenIndex((data = FindSoftOrhardHyphen(p)).hyphenIndex)) {
+        const auto q = data.hyphenIndex;
         const auto preIndex = data.hyphenIndex + (p - text.c_str());
         const auto preBoundaryNumber = paragraphImpl->getLineNumberAt(preIndex);
         const auto postIndex = paragraphImpl->findNextSoftbreakBoundary(preIndex);
@@ -205,9 +206,9 @@ static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphI
         data.hyphenIndex = preIndex;
         hyphens.push_back(data);
 
-        const size_t offset = data.isSoftHyphen ? ArrayCount(softHyphen) : ArrayCount(hardHyphen);
+        const size_t offset = data.isSoftHyphen ? 2 : 3;
 
-        p += (data.hyphenIndex + offset);
+        p += (q + offset);
     }
 
     Post(UQ(hyphens.size(), IsCharSoftHyphen(text, hyphens[i__].hyphenIndex) ^ IsCharHardHyphen(text, hyphens[i__].hyphenIndex)));
@@ -529,9 +530,10 @@ int main(int argc, char** argv)
     //const char* texts[] = {"Thisis aaaaaaaaaSoftttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
     //const char* texts[] = {"Softttttttttttttttttttttttttttttttt tttttttttttttttttttttttttttttttt noHyphen."};
 
-    const char* texts[] = {"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\u00ADcccccccccccccccccccccccccccccc\u00ADaaaaaaaaaaaaa"};
+    //const char* texts[] = {"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\u00ADcccccccccccccccccccccccccccccc\u00ADaaaaaaaaaaaaa"};
+    const char* texts[] = { "cccccccccc\u00ADaaaaaaaaaaaaa\u00ADcccccccccc\u00ADddddddddddddddddddddddd\u00ADcccccccccc\u00ADyyyyyyyyyyyyyyyyyyyyyyy" };
 
-    constexpr int w = 400, h = 600;
+    constexpr int w = 800, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
@@ -599,4 +601,4 @@ int main(int argc, char** argv)
 }
 
 
-// ddssdf safddf sadf
+// ddssdf safddf
