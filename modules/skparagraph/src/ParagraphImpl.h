@@ -150,6 +150,7 @@ public:
     TextIndex findNextGraphemeBoundary(TextIndex utf8) const;
     TextIndex findPreviousGraphemeBoundary(TextIndex utf8) const;
     TextIndex findNextSoftbreakBoundary(TextIndex utf8) const;
+    TextIndex findNextControlBoundary(TextIndex utf8) const;
     TextIndex findNextGlyphClusterBoundary(TextIndex utf8) const;
     TextIndex findPreviousGlyphClusterBoundary(TextIndex utf8) const;
     size_t getUTF16Index(TextIndex index) const {

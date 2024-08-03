@@ -45,6 +45,7 @@
 #pragma comment(lib, "winmm")
 
 typedef size_t usize;
+void DebugMessage(const char* format, ...);
 
 #define ArrayCount(a) sizeof((a)) / sizeof(*(a))
 
@@ -140,10 +141,6 @@ static HyphenData FindSoftOrhardHyphen(const char* utf8)
     result.isSoftHyphen = soft < hard;
     result.hyphenIndex = soft < hard ? soft : hard;
 
-    if (!result.isSoftHyphen) {
-        int foo = 42;
-    }
-
     return result;
 }
 
@@ -152,10 +149,6 @@ static HyphenData FindSoftOrhardHyphen(const char* utf8)
 static std::string ReplaceExistingSoftHyphenWithHard(const char utf8[], size_t utf8Units, size_t shiftIndex) {
     Pre(IsCharSoftHyphen(utf8, shiftIndex));
     std::string utf8String{utf8};
-
-    if ((uint8_t)utf8[shiftIndex] == hardHyphen[0] && (uint8_t)utf8[shiftIndex + 1] == hardHyphen[1]) {
-        return utf8String;
-    }
 
     utf8String.resize(utf8String.size() + 1);
 
@@ -171,10 +164,6 @@ static std::string ReplaceExistingHardHyphenWithSoft(const char utf8[], size_t u
     Pre(IsCharHardHyphen(utf8, shiftIndex));
     std::string utf8String{utf8};
 
-    if ((uint8_t)utf8[shiftIndex] == softHyphen[0] && (uint8_t)utf8[shiftIndex + 1] == softHyphen[1]) {
-        return utf8String;
-    }
-
     memcpy(utf8String.data() + shiftIndex, utf8 + shiftIndex + 1, utf8Units - shiftIndex - 1);
     memcpy(utf8String.data() + shiftIndex, softHyphen, 2);
 
@@ -187,10 +176,8 @@ static bool IsValidHyphenIndex(size_t index) {
     return index != skia::textlayout::EMPTY_INDEX;
 }
 
-// Hello, Vihma
-
 // TODO: wp-semantics
-static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std::vector<HyphenData>& hyphens, const std::string& text) {
+static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std::vector<HyphenData>& hyphens, const std::string& text, int layoutWidth) {
     HyphenData data = {};
     const char* p = text.c_str();
 
@@ -201,12 +188,21 @@ static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphI
         const auto postIndex = paragraphImpl->findNextSoftbreakBoundary(preIndex);
         const auto postBoundaryNumber = paragraphImpl->getLineNumberAt(postIndex);
 
-        const bool isBreak = preBoundaryNumber != postBoundaryNumber;
+        const auto breakIndex = paragraphImpl->findNextControlBoundary(postIndex+1);
+
+        skia::textlayout::LineMetrics metrics;
+        paragraphImpl->getLineMetricsAt(preBoundaryNumber, &metrics);
+        const auto range = paragraphImpl->getActualTextRange(preBoundaryNumber, true);
+
+        const auto lineWidth = metrics.fWidth;
+        const auto breakWidth = breakIndex - postIndex;
+        bool isBreak = (preBoundaryNumber != postBoundaryNumber);
+
         data.isBreak = isBreak;
         data.hyphenIndex = preIndex;
         hyphens.push_back(data);
 
-        const size_t offset = data.isSoftHyphen ? 2 : 3;
+        const size_t offset = data.isSoftHyphen ? ArrayCount(softHyphen) : ArrayCount(hardHyphen);
 
         p += (q + offset);
     }
@@ -239,6 +235,10 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
             hyphens[i].isSoftHyphen = true;
         }
 
+        // !issoft && isbreak
+        // !(issoft || !isbreak)
+        // !(!isbreak || issoft)
+        // !(isbreak => issoft)
         Post(Iff(!hyphens[i].isSoftHyphen && isBreak, IsCharHardHyphen(converted, hyphenIndex)));
         Post(Iff(hyphens[i].isSoftHyphen && !isBreak, IsCharSoftHyphen(converted, hyphenIndex)));
 
@@ -525,13 +525,16 @@ int main(int argc, char** argv)
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
+    //const char* texts[] = {"Soft\u00AD123"};
     //const char* texts[] = {"FirstWord  fooooooooooooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
-    //const char* texts[] = {"Thisis aaaaaaaaaSoftttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
+    const char* texts[] = {"Thisis aaaaaaaaaSoftttttttttttttttttttttttttttttttttttttttttttttt asd\u00ADHyphen."};
     //const char* texts[] = {"Softttttttttttttttttttttttttttttttt tttttttttttttttttttttttttttttttt noHyphen."};
 
     //const char* texts[] = {"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\u00ADcccccccccccccccccccccccccccccc\u00ADaaaaaaaaaaaaa"};
-    const char* texts[] = { "cccccccccc\u00ADaaaaaaaaaaaaa\u00ADcccccccccc\u00ADddddddddddddddddddddddd\u00ADcccccccccc\u00ADyyyyyyyyyyyyyyyyyyyyyyy" };
+    //const char* texts[] = { "cccccccccc\u00ADyyyyyyyyyy" };
+    //const char* texts[] = { "-" };
+
+    //const char* texts[] = { "Lorem ip\u00ADsum do\u00ADlor sit amet, con\u00ADsecte\u00ADtur adip\u00ADisc\u00ADing elit. Etiam sed tris\u00ADtique pu\u00ADrus. Sed non cur\u00ADsus tel\u00ADlus. Fusce sus\u00ADcipit blandit viver\u00ADra. Cras non sagit\u00ADtis ur\u00ADna. Donec ali\u00ADquet ve\u00ADne\u00ADnatis odio, et eu\u00ADis\u00ADmod nunc eleifend feu\u00ADgiat. Proin vo\u00ADlut\u00ADpat lec\u00ADtus non eges\u00ADtas tin\u00ADcidunt. Sus\u00ADpendisse tin\u00ADcidunt eges\u00ADtas laoreet. Nunc et sapien con\u00ADse\u00ADquat, vestibu\u00ADlum eros sit amet, blandit sapi\u00ADen. Sus\u00ADpendisse a im\u00ADperdiet elit. Nam ornare vi\u00ADtae nulla sit amet ef\u00ADfici\u00ADtur. Donec ia\u00ADc\u00ADulis au\u00ADgue sit amet nibh mo\u00ADlestie dapibus." };
 
     constexpr int w = 800, h = 600;
     RECT windowRectangle = {0, 0, w, h};
@@ -558,7 +561,7 @@ int main(int argc, char** argv)
 
         std::vector<HyphenData> hyphens = {};
 
-        FindAllSoftAndHardBreaks(paragraphImpl, hyphens, previousText);
+        FindAllSoftAndHardBreaks(paragraphImpl, hyphens, previousText, w);
 
         const std::string hyphenedText = ConvertSoftBreaks(hyphens, previousText);
 
@@ -586,6 +589,7 @@ int main(int argc, char** argv)
 
         ClearFrameBuffers(canvas.get(), SkColors::kDkGray);
 
+        //DebugMessage("Layout width: %d\n", winArea.width);
         Layout(canvas.get(), winArea.width, winArea.height);
 
         const int framesToRun = WaitForFrame();
