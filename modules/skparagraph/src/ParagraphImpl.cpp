@@ -12,6 +12,8 @@
 #include "modules/skparagraph/include/Paragraph.h"
 #include "modules/skparagraph/include/ParagraphPainter.h"
 #include "modules/skparagraph/include/ParagraphStyle.h"
+#include "modules/skparagraph/include/ParagraphBuilder.h"
+#include "modules/skparagraph/src/ParagraphBuilderImpl.h"
 #include "modules/skparagraph/include/TextStyle.h"
 #include "modules/skparagraph/src/OneLineShaper.h"
 #include "modules/skparagraph/src/ParagraphImpl.h"
@@ -34,7 +36,266 @@ using namespace skia_private;
 namespace skia {
 namespace textlayout {
 
+struct HyphenData
+{
+    size_t hyphenIndex;
+    bool isSoftHyphen;  // True if soft hyphen, false if hard
+    bool isBreak;       // True if word break, false if not
+};
+
 namespace {
+typedef size_t usize;
+#define ArrayCount(a) sizeof((a)) / sizeof(*(a))
+
+#define Halt __debugbreak();
+#define MAX_UPS (120)
+#define MSEC_PER_SIM (1000 / MAX_UPS)
+
+#define Pre(a) \
+    if (!(a)) Halt
+#define Post(a) \
+    if (!(a)) Halt
+#define Invariant(a) \
+    if (!(a)) Halt
+
+#define Implies(a, b) (!(a) || (b))
+#define Iff(a, b) ((a) == (b))
+
+#define ForI(b, n) for(u32 i = (b); i < (n); ++i)
+#define ForJ(b, n) for(u32 j = (b); j < (n); ++j)
+#define ForK(b, n) for(u32 k = (b); k < (n); ++k)
+
+#define EQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { return true; } } return false; }()
+#define UQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if (!(p)) { return false; } } return true; }()
+#define CQ(n, p) [&]() -> usize {usize counter = 0; for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { ++counter; } } return counter; }()
+
+namespace
+{
+    constexpr size_t EmptyIndex = skia::textlayout::EMPTY_INDEX;
+    // Maybe we can just use the unicode symbols to find?
+    // TODO: Use std::arrays for these
+    constexpr uint8_t softHyphen[2] = {0xC2, 0xAD};
+    constexpr uint8_t hardHyphen[3] = {0xE2, 0x80, 0x90};
+
+    // TODO: wp-semantics
+    bool IsCharSoftHyphen(const std::string& text, size_t i) {
+        return (uint8_t)text[i] == softHyphen[0] && (uint8_t)text[i+1] == softHyphen[1];
+    };
+    // TODO: wp-semantics
+    bool IsCharHardHyphen(const std::string& text, size_t i) {
+        return (uint8_t)text[i] == hardHyphen[0] && (uint8_t)text[i+1] == hardHyphen[1] && (uint8_t)text[i+2] == hardHyphen[2];
+    };
+
+    // TODO: Remove
+    const auto IsAnyHardHyphen = [](const std::string& hyphenedText, size_t i)
+    { return (uint8_t)hyphenedText[i] == hardHyphen[0] ||
+        (uint8_t)hyphenedText[i] == hardHyphen[1] ||
+        (uint8_t)hyphenedText[i] == hardHyphen[2]; };
+    const auto IsAnySoftHyphen = [](const std::string& hyphenedText, size_t i)
+    { return (uint8_t)hyphenedText[i] == softHyphen[0] ||
+        (uint8_t)hyphenedText[i] == softHyphen[1]; };
+}
+
+// Semantic compress the functions
+// TODO: wp-semantics
+// TODO: Use std::string functions where able
+static size_t FindSoftHyphen(const char* utf8) 
+{
+    std::string utf8String{utf8};
+
+    const auto result = utf8String.find(softHyphen[0]);
+    if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != softHyphen[1])
+        return skia::textlayout::EMPTY_INDEX;
+
+    return result;
+}
+
+// Semantic compress the functions
+static size_t FindHardHyphen(const char* utf8) 
+{
+    std::string utf8String{utf8};
+
+    const auto result = utf8String.find(hardHyphen[0]);
+    if (result == utf8String.npos || (uint8_t)utf8String[result + 1] != hardHyphen[1] ||
+        (uint8_t)utf8String[result + 2] != hardHyphen[2])
+        return skia::textlayout::EMPTY_INDEX;
+
+    return result;
+}
+
+static HyphenData FindSoftOrhardHyphen(const char* utf8) 
+{
+    HyphenData result = {};
+    const auto soft = FindSoftHyphen(utf8);
+    const auto hard = FindHardHyphen(utf8);
+
+    result.isSoftHyphen = soft < hard;
+    result.hyphenIndex = soft < hard ? soft : hard;
+
+    return result;
+}
+
+// TODO: Pass in just the std string
+// TODO: Harden indexing with wp-semantics
+static std::string ReplaceExistingSoftHyphenWithHard(const char utf8[], size_t utf8Units, size_t shiftIndex) {
+    Pre(IsCharSoftHyphen(utf8, shiftIndex));
+    std::string utf8String{utf8};
+
+    utf8String.resize(utf8String.size() + 1);
+
+    memcpy(utf8String.data() + shiftIndex + 1, utf8 + shiftIndex, utf8Units - shiftIndex);
+    memcpy(utf8String.data() + shiftIndex, hardHyphen, 3);
+
+    return utf8String;
+}
+
+// TODO: Pass in just the std string
+// TODO: Harden indexing with wp-semantics
+static std::string ReplaceExistingHardHyphenWithSoft(const char utf8[], size_t utf8Units, size_t shiftIndex) {
+    Pre(IsCharHardHyphen(utf8, shiftIndex));
+    std::string utf8String{utf8};
+
+    memcpy(utf8String.data() + shiftIndex, utf8 + shiftIndex + 1, utf8Units - shiftIndex - 1);
+    memcpy(utf8String.data() + shiftIndex, softHyphen, 2);
+
+    utf8String.erase(utf8String.end()-1);
+
+    return utf8String;
+}
+
+static bool IsValidHyphenIndex(size_t index) {
+    return index != skia::textlayout::EMPTY_INDEX;
+}
+
+static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std::vector<HyphenData>& hyphens, const std::string& text, const int layoutWidth) {
+    HyphenData data = {};
+    const char* p = text.c_str();
+
+    while (IsValidHyphenIndex((data = FindSoftOrhardHyphen(p)).hyphenIndex)) {
+        const auto q = data.hyphenIndex;
+        const auto preIndex = data.hyphenIndex + (p - text.c_str());
+        const auto preBoundaryNumber = paragraphImpl->getLineNumberAt(preIndex);
+        const auto postIndex = paragraphImpl->findNextSoftbreakBoundary(preIndex);
+        const auto postBoundaryNumber = paragraphImpl->getLineNumberAt(postIndex);
+
+        bool isBreak = (preBoundaryNumber != postBoundaryNumber);
+
+        #if 0
+        const auto breakIndex = paragraphImpl->findNextSoftbreakBoundary(postIndex+1);
+
+        auto startIndex = postIndex-1;
+        auto endIndex = breakIndex-1;
+
+        // Get the bounding boxes for the specified range
+        std::vector<skia::textlayout::TextBox> boxes =
+            paragraphImpl->getRectsForRange(startIndex, endIndex,
+            skia::textlayout::RectHeightStyle::kTight,
+            skia::textlayout::RectWidthStyle::kTight);
+
+        // Calculate the pixel width of the postfix
+        float x = 0;
+        for (const auto& box : boxes) {
+            x += box.rect.width();
+        }
+
+        size_t lineWidth = 0;
+        startIndex = 0;
+        const auto textRange = paragraphImpl->getActualTextRange(preBoundaryNumber, false);
+        endIndex = textRange.end;
+
+        // Get the bounding boxes for the specified range
+        boxes =
+            paragraphImpl->getRectsForRange(startIndex, endIndex,
+            skia::textlayout::RectHeightStyle::kTight,
+            skia::textlayout::RectWidthStyle::kTight);
+
+        for (const auto& box : boxes) {
+            lineWidth += box.rect.width();
+        }
+
+        if ((lineWidth - x) + 5 > layoutWidth) {
+           isBreak = false; 
+        }
+
+        DebugMessage("postFixWidth width: %d\n", (int)x);
+        Post(Iff((lineWidth - x) + 5 <= layoutWidth && preBoundaryNumber != postBoundaryNumber, isBreak));
+        #endif
+
+        data.isBreak = isBreak;
+        data.hyphenIndex = preIndex;
+        hyphens.push_back(data);
+
+        const size_t offset = data.isSoftHyphen ? ArrayCount(softHyphen) : ArrayCount(hardHyphen);
+
+        p += (q + offset);
+    }
+
+    Post(UQ(hyphens.size(), IsCharSoftHyphen(text, hyphens[i__].hyphenIndex) ^ IsCharHardHyphen(text, hyphens[i__].hyphenIndex)));
+}
+
+static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std::string& text) {
+    std::string converted = text;
+    for (size_t i = 0; i < hyphens.size(); ++i) {
+        const auto isSoftHyphen = hyphens[i].isSoftHyphen;
+        const auto isBreak = hyphens[i].isBreak;
+        const auto hyphenIndex = hyphens[i].hyphenIndex;
+
+        if (isSoftHyphen && isBreak) {
+            converted = ReplaceExistingSoftHyphenWithHard(converted.c_str(), converted.size(), hyphenIndex);
+            // Shift every following index by one so that the hard-hyphen fits in
+            for (size_t j = i + 1; j < hyphens.size(); ++j) {
+                ++hyphens[j].hyphenIndex;
+            }
+            hyphens[i].isSoftHyphen = false;
+        }
+        if (!isSoftHyphen && !isBreak) {
+            converted = ReplaceExistingHardHyphenWithSoft(converted.c_str(), converted.size(), hyphenIndex);
+            // Sync every index again
+            for (size_t j = i + 1; j < hyphens.size(); ++j) {
+                --hyphens[j].hyphenIndex;
+            }
+
+            hyphens[i].isSoftHyphen = true;
+        }
+
+        Post(Iff(!hyphens[i].isSoftHyphen && isBreak, IsCharHardHyphen(converted, hyphenIndex)));
+        Post(Iff(hyphens[i].isSoftHyphen && !isBreak, IsCharSoftHyphen(converted, hyphenIndex)));
+
+        Post(Iff(!hyphens[i].isSoftHyphen && isBreak, IsCharHardHyphen(converted, hyphenIndex)));
+        Post(Iff(hyphens[i].isSoftHyphen && !isBreak, IsCharSoftHyphen(converted, hyphenIndex)));
+    }
+
+    return converted;
+}
+
+// TODO: Add this as member
+// Cannot call this from inside layout since it calls layout itself
+void layoutWithHyphens(ParagraphImpl* paragraphImpl, ParagraphBuilder* paraBuilder, std::string& previousText, int w) {
+    Pre(paragraphImpl);
+    Pre(paraBuilder);
+    Pre(!previousText.empty());
+    Pre(w > 0);
+
+    paraBuilder->Reset();
+    paraBuilder->addText(previousText.c_str(), previousText.size());
+
+    auto paragraph = paraBuilder->Build();
+    //paragraphImpl->shapeLayout(w);
+    paragraphImpl->breakShapedTextIntoLines(w);
+
+    std::vector<HyphenData> hyphens = {};
+
+    FindAllSoftAndHardBreaks(paragraphImpl, hyphens, previousText, w);
+
+    const std::string hyphenedText = ConvertSoftBreaks(hyphens, previousText);
+
+    previousText = hyphenedText;
+
+    paraBuilder->Reset();
+    paraBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
+    //paragraphImpl->shapeLayout(w);
+    paragraphImpl->breakShapedTextIntoLines(w);
+}
 
 SkScalar littleRound(SkScalar a) {
     // This rounding is done to match Flutter tests. Must be removed..
@@ -77,7 +338,7 @@ ParagraphImpl::ParagraphImpl(const SkString& text,
                              TArray<Placeholder, true> placeholders,
                              sk_sp<FontCollection> fonts,
                              sk_sp<SkUnicode> unicode)
-        : Paragraph(std::move(style), std::move(fonts))
+        : Paragraph(std::move(style), fonts)
         , fTextStyles(std::move(blocks))
         , fPlaceholders(std::move(placeholders))
         , fText(text)
@@ -91,6 +352,8 @@ ParagraphImpl::ParagraphImpl(const SkString& text,
         , fHasLineBreaks(false)
         , fHasWhitespacesInside(false)
         , fTrailingSpaces(0)
+        , fBuilder(ParagraphBuilder::make(ParagraphStyle{}, fonts))
+        , fPreviousText(fText.c_str())
 {
     SkASSERT(fUnicode);
 }
@@ -135,7 +398,52 @@ void ParagraphImpl::addUnresolvedCodepoints(TextRange textRange) {
     );
 }
 
-bool ParagraphImpl::layout(SkScalar rawWidth) {
+void ParagraphImpl::shapeLayout(SkScalar floorWidth) {
+    // Check if we have the text in the cache and don't need to shape it again
+    //if (!fFontCollection->getParagraphCache()->findParagraph(this)) {
+    if (1) {
+        if (1) {
+            // This only happens once at the first layout; the text is immutable
+            // and there is no reason to repeat it
+            if (this->computeCodeUnitProperties()) {
+                fState = kIndexed;
+            }
+        }
+        this->fRuns.clear();
+        this->fClusters.clear();
+        this->fClustersIndexFromCodeUnit.clear();
+        this->fClustersIndexFromCodeUnit.push_back_n(fText.size() + 1, EMPTY_INDEX);
+        if (!this->shapeTextIntoEndlessLine()) {
+            this->resetContext();
+            // TODO: merge the two next calls - they always come together
+            this->resolveStrut();
+            this->computeEmptyMetrics();
+            this->fLines.clear();
+
+            // Set the important values that are not zero
+            fWidth = floorWidth;
+            fHeight = fEmptyMetrics.height();
+            if (fParagraphStyle.getStrutStyle().getStrutEnabled() &&
+                fParagraphStyle.getStrutStyle().getForceStrutHeight()) {
+                fHeight = fStrutMetrics.height();
+            }
+            fAlphabeticBaseline = fEmptyMetrics.alphabeticBaseline();
+            fIdeographicBaseline = fEmptyMetrics.ideographicBaseline();
+            fLongestLine = FLT_MIN - FLT_MAX;  // That is what flutter has
+            fMinIntrinsicWidth = 0;
+            fMaxIntrinsicWidth = 0;
+            this->fOldWidth = floorWidth;
+            this->fOldHeight = this->fHeight;
+        }
+        else {
+            // Add the paragraph to the cache
+            fFontCollection->getParagraphCache()->updateParagraph(this);
+        }
+    }
+    fState = kShaped;
+}
+
+void ParagraphImpl::layout(SkScalar rawWidth) {
     // TODO: This rounding is done to match Flutter tests. Must be removed...
     auto floorWidth = rawWidth;
     if (getApplyRoundingHack()) {
@@ -191,8 +499,6 @@ bool ParagraphImpl::layout(SkScalar rawWidth) {
                 fMaxIntrinsicWidth = 0;
                 this->fOldWidth = floorWidth;
                 this->fOldHeight = this->fHeight;
-
-                return fHasWordBreaks;
             } else {
                 // Add the paragraph to the cache
                 fFontCollection->getParagraphCache()->updateParagraph(this);
@@ -238,8 +544,7 @@ bool ParagraphImpl::layout(SkScalar rawWidth) {
         fMaxIntrinsicWidth = fMinIntrinsicWidth;
     }
 
-    //SkDebugf("layout('%s', %f): %f %f\n", fText.c_str(), rawWidth, fMinIntrinsicWidth, fMaxIntrinsicWidth);
-    return fHasWordBreaks;
+    layoutWithHyphens(this, this->fBuilder.get(), this->fPreviousText, rawWidth);
 }
 
 void ParagraphImpl::paint(SkCanvas* canvas, SkScalar x, SkScalar y) {

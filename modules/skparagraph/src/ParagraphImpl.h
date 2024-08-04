@@ -20,6 +20,7 @@
 #include "modules/skparagraph/include/Paragraph.h"
 #include "modules/skparagraph/include/ParagraphCache.h"
 #include "modules/skparagraph/include/ParagraphStyle.h"
+#include "modules/skparagraph/include/ParagraphBuilder.h"
 #include "modules/skparagraph/include/TextShadow.h"
 #include "modules/skparagraph/include/TextStyle.h"
 #include "modules/skparagraph/src/Run.h"
@@ -105,7 +106,8 @@ public:
 
     ~ParagraphImpl() override;
 
-    bool layout(SkScalar width) override;
+    void layout(SkScalar rawWidth) override;
+    void shapeLayout(SkScalar floorWidth);
     void paint(SkCanvas* canvas, SkScalar x, SkScalar y) override;
     void paint(ParagraphPainter* canvas, SkScalar x, SkScalar y) override;
     std::vector<TextBox> getRectsForRange(unsigned start,
@@ -308,6 +310,10 @@ private:
     bool fHasLineBreaks;
     bool fHasWhitespacesInside;
     TextIndex fTrailingSpaces;
+    std::string fPreviousText;
+
+    // TODO: sk_sp?
+    std::unique_ptr<ParagraphBuilder> fBuilder;
 };
 }  // namespace textlayout
 }  // namespace skia
