@@ -398,6 +398,7 @@ void ParagraphImpl::addUnresolvedCodepoints(TextRange textRange) {
     );
 }
 
+// TODO: Optimize
 void ParagraphImpl::shapeLayout(SkScalar floorWidth) {
     // Check if we have the text in the cache and don't need to shape it again
     //if (!fFontCollection->getParagraphCache()->findParagraph(this)) {
