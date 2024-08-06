@@ -67,6 +67,7 @@ typedef size_t usize;
 
 #define EQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { return true; } } return false; }()
 #define UQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if (!(p)) { return false; } } return true; }()
+#define UQI(i, n, p) [&]() -> bool {for(usize i__ = (i); i__ < (n); ++i__) { if (!(p)) { return false; } } return true; }()
 #define CQ(n, p) [&]() -> usize {usize counter = 0; for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { ++counter; } } return counter; }()
 
 namespace
@@ -241,14 +242,18 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
         const auto hyphenIndex = hyphens[i].hyphenIndex;
 
         if (isSoftHyphen && isBreak) {
+            const auto originalHyphens = hyphens;
             converted = ReplaceExistingSoftHyphenWithHard(converted.c_str(), converted.size(), hyphenIndex);
             // Shift every following index by one so that the hard-hyphen fits in
             for (size_t j = i + 1; j < hyphens.size(); ++j) {
                 ++hyphens[j].hyphenIndex;
             }
             hyphens[i].isSoftHyphen = false;
+
+            Post(Iff(isSoftHyphen && isBreak, UQI(i + 1, hyphens.size(), hyphens[i__].hyphenIndex == originalHyphens[i__].hyphenIndex + 1)));
         }
         if (!isSoftHyphen && !isBreak) {
+            const auto originalHyphens = hyphens;
             converted = ReplaceExistingHardHyphenWithSoft(converted.c_str(), converted.size(), hyphenIndex);
             // Sync every index again
             for (size_t j = i + 1; j < hyphens.size(); ++j) {
@@ -256,6 +261,8 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
             }
 
             hyphens[i].isSoftHyphen = true;
+
+            Post(Iff(!isSoftHyphen && !isBreak, UQI(i + 1, hyphens.size(), hyphens[i__].hyphenIndex == originalHyphens[i__].hyphenIndex - 1)));
         }
 
         Post(Iff(!hyphens[i].isSoftHyphen && isBreak, IsCharHardHyphen(converted, hyphenIndex)));
@@ -266,35 +273,6 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
     }
 
     return converted;
-}
-
-// TODO: Add this as member
-// Cannot call this from inside layout since it calls layout itself
-void layoutWithHyphens(ParagraphImpl* paragraphImpl, ParagraphBuilder* paraBuilder, std::string& previousText, int w) {
-    Pre(paragraphImpl);
-    Pre(paraBuilder);
-    Pre(!previousText.empty());
-    Pre(w > 0);
-
-    paraBuilder->Reset();
-    paraBuilder->addText(previousText.c_str(), previousText.size());
-
-    auto paragraph = paraBuilder->Build();
-    //paragraphImpl->shapeLayout(w);
-    paragraphImpl->breakShapedTextIntoLines(w);
-
-    std::vector<HyphenData> hyphens = {};
-
-    FindAllSoftAndHardBreaks(paragraphImpl, hyphens, previousText, w);
-
-    const std::string hyphenedText = ConvertSoftBreaks(hyphens, previousText);
-
-    previousText = hyphenedText;
-
-    paraBuilder->Reset();
-    paraBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
-    //paragraphImpl->shapeLayout(w);
-    paragraphImpl->breakShapedTextIntoLines(w);
 }
 
 SkScalar littleRound(SkScalar a) {
@@ -352,7 +330,7 @@ ParagraphImpl::ParagraphImpl(const SkString& text,
         , fHasLineBreaks(false)
         , fHasWhitespacesInside(false)
         , fTrailingSpaces(0)
-        , fBuilder(ParagraphBuilder::make(ParagraphStyle{}, fonts))
+        , fBuilder(ParagraphBuilder::make(style, fonts))
         , fPreviousText(fText.c_str())
 {
     SkASSERT(fUnicode);
@@ -398,49 +376,8 @@ void ParagraphImpl::addUnresolvedCodepoints(TextRange textRange) {
     );
 }
 
-// TODO: Optimize
 void ParagraphImpl::shapeLayout(SkScalar floorWidth) {
-    // Check if we have the text in the cache and don't need to shape it again
-    //if (!fFontCollection->getParagraphCache()->findParagraph(this)) {
-    if (1) {
-        if (1) {
-            // This only happens once at the first layout; the text is immutable
-            // and there is no reason to repeat it
-            if (this->computeCodeUnitProperties()) {
-                fState = kIndexed;
-            }
-        }
-        this->fRuns.clear();
-        this->fClusters.clear();
-        this->fClustersIndexFromCodeUnit.clear();
-        this->fClustersIndexFromCodeUnit.push_back_n(fText.size() + 1, EMPTY_INDEX);
-        if (!this->shapeTextIntoEndlessLine()) {
-            this->resetContext();
-            // TODO: merge the two next calls - they always come together
-            this->resolveStrut();
-            this->computeEmptyMetrics();
-            this->fLines.clear();
-
-            // Set the important values that are not zero
-            fWidth = floorWidth;
-            fHeight = fEmptyMetrics.height();
-            if (fParagraphStyle.getStrutStyle().getStrutEnabled() &&
-                fParagraphStyle.getStrutStyle().getForceStrutHeight()) {
-                fHeight = fStrutMetrics.height();
-            }
-            fAlphabeticBaseline = fEmptyMetrics.alphabeticBaseline();
-            fIdeographicBaseline = fEmptyMetrics.ideographicBaseline();
-            fLongestLine = FLT_MIN - FLT_MAX;  // That is what flutter has
-            fMinIntrinsicWidth = 0;
-            fMaxIntrinsicWidth = 0;
-            this->fOldWidth = floorWidth;
-            this->fOldHeight = this->fHeight;
-        }
-        else {
-            // Add the paragraph to the cache
-            fFontCollection->getParagraphCache()->updateParagraph(this);
-        }
-    }
+    shapeTextIntoEndlessLine();
     fState = kShaped;
 }
 
@@ -545,7 +482,7 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
         fMaxIntrinsicWidth = fMinIntrinsicWidth;
     }
 
-    layoutWithHyphens(this, this->fBuilder.get(), this->fPreviousText, rawWidth);
+    layoutWithHyphens(rawWidth);
 }
 
 void ParagraphImpl::paint(SkCanvas* canvas, SkScalar x, SkScalar y) {
@@ -870,9 +807,9 @@ bool ParagraphImpl::shapeTextIntoEndlessLine() {
     fUnresolvedCodepoints.clear();
     fFontSwitches.clear();
 
-    OneLineShaper oneLineShaper(this);
-    auto result = oneLineShaper.shape();
-    fUnresolvedGlyphs = oneLineShaper.unresolvedGlyphs();
+    OneLineShaper shaper(this);
+    auto result = shaper.shape();
+    fUnresolvedGlyphs = shaper.unresolvedGlyphs();
 
     this->applySpacingAndBuildClusterTable();
 
@@ -1926,6 +1863,37 @@ bool ParagraphImpl::containsColorFontOrBitmap(SkTextBlob* textBlob) {
         iter.next();
     }
     return flag;
+}
+
+// TODO: Add this as member
+// Cannot call this from inside layout since it calls layout itself
+void ParagraphImpl::layoutWithHyphens(int w) {
+    Pre(this->fBuilder);
+    Pre(!fPreviousText.empty());
+    Pre(w > 0);
+
+    this->fBuilder->Reset();
+    this->fBuilder->addText(this->fPreviousText.c_str(), this->fPreviousText.size());
+
+    this->shapeLayout(w);
+    this->breakShapedTextIntoLines(w);
+
+    std::vector<HyphenData> hyphens = {};
+
+    FindAllSoftAndHardBreaks(this, hyphens, this->fPreviousText, w);
+
+    const std::string hyphenedText = ConvertSoftBreaks(hyphens, this->fPreviousText);
+
+    this->fPreviousText = hyphenedText;
+
+    this->fBuilder->Reset();
+    this->fBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
+    this->shapeLayout(w);
+
+    fText = SkString{ hyphenedText };
+
+    Post(fText == SkString{hyphenedText});
+    this->breakShapedTextIntoLines(w);
 }
 
 }  // namespace textlayout

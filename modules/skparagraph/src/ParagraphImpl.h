@@ -265,6 +265,7 @@ private:
     friend class OneLineShaper;
 
     void computeEmptyMetrics();
+    void layoutWithHyphens(int w);
 
     // Input
     skia_private::TArray<StyleBlock<SkScalar>> fLetterSpaceStyles;

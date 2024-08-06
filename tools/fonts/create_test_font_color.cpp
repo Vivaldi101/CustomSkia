@@ -45,14 +45,6 @@
 #pragma comment(lib, "skparagraph")
 #pragma comment(lib, "winmm")
 
-namespace skia
-{
-namespace textlayout
-{
-void layoutWithHyphens(ParagraphImpl* paragraphImpl, std::string& previousText, int w);
-}
-}
-
 typedef size_t usize;
 void DebugMessage(const char* format, ...);
 
@@ -78,6 +70,7 @@ void DebugMessage(const char* format, ...);
 
 #define EQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { return true; } } return false; }()
 #define UQ(n, p) [&]() -> bool {for(usize i__ = 0u; i__ < (n); ++i__) { if (!(p)) { return false; } } return true; }()
+#define UQI(i, n, p) [&]() -> bool {for(usize i__ = (i); i__ < (n); ++i__) { if (!(p)) { return false; } } return true; }()
 #define CQ(n, p) [&]() -> usize {usize counter = 0; for(usize i__ = 0u; i__ < (n); ++i__) { if ((p)) { ++counter; } } return counter; }()
 
 namespace
@@ -258,14 +251,18 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
         const auto hyphenIndex = hyphens[i].hyphenIndex;
 
         if (isSoftHyphen && isBreak) {
+            const auto originalHyphens = hyphens;
             converted = ReplaceExistingSoftHyphenWithHard(converted.c_str(), converted.size(), hyphenIndex);
             // Shift every following index by one so that the hard-hyphen fits in
             for (size_t j = i + 1; j < hyphens.size(); ++j) {
                 ++hyphens[j].hyphenIndex;
             }
             hyphens[i].isSoftHyphen = false;
+
+            Post(Iff(isSoftHyphen && isBreak, UQI(i + 1, hyphens.size(), hyphens[i__].hyphenIndex == originalHyphens[i__].hyphenIndex + 1)));
         }
         if (!isSoftHyphen && !isBreak) {
+            const auto originalHyphens = hyphens;
             converted = ReplaceExistingHardHyphenWithSoft(converted.c_str(), converted.size(), hyphenIndex);
             // Sync every index again
             for (size_t j = i + 1; j < hyphens.size(); ++j) {
@@ -273,6 +270,8 @@ static std::string ConvertSoftBreaks(std::vector<HyphenData>& hyphens, const std
             }
 
             hyphens[i].isSoftHyphen = true;
+
+            Post(Iff(!isSoftHyphen && !isBreak, UQI(i + 1, hyphens.size(), hyphens[i__].hyphenIndex == originalHyphens[i__].hyphenIndex - 1)));
         }
 
         Post(Iff(!hyphens[i].isSoftHyphen && isBreak, IsCharHardHyphen(converted, hyphenIndex)));
@@ -573,7 +572,7 @@ int main(int argc, char** argv)
 
     //const char* texts[] = { "Lorem ip\u00ADsum do\u00ADlor sit amet, con\u00ADsecte\u00ADtur adip\u00ADisc\u00ADing elit. Etiam sed tris\u00ADtique pu\u00ADrus. Sed non cur\u00ADsus tel\u00ADlus. Fusce sus\u00ADcipit blandit viver\u00ADra. Cras non sagit\u00ADtis ur\u00ADna. Donec ali\u00ADquet ve\u00ADne\u00ADnatis odio, et eu\u00ADis\u00ADmod nunc eleifend feu\u00ADgiat. Proin vo\u00ADlut\u00ADpat lec\u00ADtus non eges\u00ADtas tin\u00ADcidunt. Sus\u00ADpendisse tin\u00ADcidunt eges\u00ADtas laoreet. Nunc et sapien con\u00ADse\u00ADquat, vestibu\u00ADlum eros sit amet, blandit sapi\u00ADen. Sus\u00ADpendisse a im\u00ADperdiet elit. Nam ornare vi\u00ADtae nulla sit amet ef\u00ADfici\u00ADtur. Donec ia\u00ADc\u00ADulis au\u00ADgue sit amet nibh mo\u00ADlestie dapibus." };
 
-    constexpr int w = 500, h = 600;
+    constexpr int w = 200, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
@@ -613,15 +612,15 @@ int main(int argc, char** argv)
 
         paragraph->paint(canvas, 0, 0);
     };
-    #endif
-
-    auto Layout = [&paraBuilder, &text, &previousText](SkCanvas* canvas, int w, int h) {
+    #else
+    auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
         paraBuilder->Reset();
         paraBuilder->addText(text.c_str());
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
     };
+    #endif
 
     MSG msg;
     memset(&msg, 0, sizeof(msg));
@@ -652,4 +651,4 @@ int main(int argc, char** argv)
 }
 
 
-// sd d 
+//sdfass df d ssdfassf saff
