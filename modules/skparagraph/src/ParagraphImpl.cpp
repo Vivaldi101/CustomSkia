@@ -377,6 +377,8 @@ void ParagraphImpl::addUnresolvedCodepoints(TextRange textRange) {
 }
 
 void ParagraphImpl::shapeLayout(SkScalar floorWidth) {
+    this->fRuns.clear();
+    this->fClusters.clear();
     shapeTextIntoEndlessLine();
     fState = kShaped;
 }
@@ -482,7 +484,7 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
         fMaxIntrinsicWidth = fMinIntrinsicWidth;
     }
 
-    layoutWithHyphens(rawWidth);
+    //layoutWithHyphens(rawWidth);
 }
 
 void ParagraphImpl::paint(SkCanvas* canvas, SkScalar x, SkScalar y) {
@@ -1865,8 +1867,6 @@ bool ParagraphImpl::containsColorFontOrBitmap(SkTextBlob* textBlob) {
     return flag;
 }
 
-// TODO: Add this as member
-// Cannot call this from inside layout since it calls layout itself
 void ParagraphImpl::layoutWithHyphens(int w) {
     Pre(this->fBuilder);
     Pre(!fPreviousText.empty());
@@ -1892,8 +1892,9 @@ void ParagraphImpl::layoutWithHyphens(int w) {
 
     fText = SkString{ hyphenedText };
 
-    Post(fText == SkString{hyphenedText});
     this->breakShapedTextIntoLines(w);
+
+    Post(fText == SkString{hyphenedText});
 }
 
 }  // namespace textlayout

@@ -178,7 +178,8 @@ static bool IsValidHyphenIndex(size_t index) {
     return index != skia::textlayout::EMPTY_INDEX;
 }
 
-static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, std::vector<HyphenData>& hyphens, const std::string& text, const int layoutWidth) {
+static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, skia::textlayout::ParagraphBuilder* paraBuilder, std::vector<HyphenData>& hyphens, const std::string& text, const int layoutWidth) {
+    const SkFont font = ToolUtils::DefaultFont();
     HyphenData data = {};
     const char* p = text.c_str();
 
@@ -188,48 +189,19 @@ static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphI
         const auto preBoundaryNumber = paragraphImpl->getLineNumberAt(preIndex);
         const auto postIndex = paragraphImpl->findNextSoftbreakBoundary(preIndex);
         const auto postBoundaryNumber = paragraphImpl->getLineNumberAt(postIndex);
-
-        const auto breakIndex = paragraphImpl->findNextSoftbreakBoundary(postIndex+1);
-
-        //const auto breakWidth = breakIndex - postIndex;
         bool isBreak = (preBoundaryNumber != postBoundaryNumber);
 
-        auto startIndex = postIndex-1;
-        auto endIndex = breakIndex-1;
+        if (data.isSoftHyphen && isBreak) {
+            // Measure up to but not including the soft-hyphen
+            SkScalar widthBefore = font.measureText(text.c_str(), data.hyphenIndex, SkTextEncoding::kUTF8);
+            SkString hyphen("-");
+            // Measure the hyphen
+            SkScalar widthHyphen = font.measureText(hyphen.c_str(), hyphen.size(), SkTextEncoding::kUTF8);
 
-        // Get the bounding boxes for the specified range
-        std::vector<skia::textlayout::TextBox> boxes =
-            paragraphImpl->getRectsForRange(startIndex, endIndex,
-            skia::textlayout::RectHeightStyle::kTight,
-            skia::textlayout::RectWidthStyle::kTight);
+            const float totalWidthWithHyphen = widthBefore + widthHyphen;
 
-        // Calculate the pixel width of the postfix
-        float x = 0;
-        for (const auto& box : boxes) {
-            x += box.rect.width();
+            isBreak = (totalWidthWithHyphen < layoutWidth);
         }
-
-        size_t lineWidth = 0;
-        startIndex = 0;
-        const auto textRange = paragraphImpl->getActualTextRange(preBoundaryNumber, false);
-        endIndex = textRange.end;
-
-        // Get the bounding boxes for the specified range
-        boxes =
-            paragraphImpl->getRectsForRange(startIndex, endIndex,
-            skia::textlayout::RectHeightStyle::kTight,
-            skia::textlayout::RectWidthStyle::kTight);
-
-        for (const auto& box : boxes) {
-            lineWidth += box.rect.width();
-        }
-
-        if ((lineWidth - x) + 5 > layoutWidth) {
-           isBreak = false; 
-        }
-
-        DebugMessage("postFixWidth width: %d\n", (int)x);
-        Post(Iff((lineWidth - x) + 5 <= layoutWidth && preBoundaryNumber != postBoundaryNumber, isBreak));
 
         data.isBreak = isBreak;
         data.hyphenIndex = preIndex;
@@ -572,7 +544,7 @@ int main(int argc, char** argv)
 
     //const char* texts[] = { "Lorem ip\u00ADsum do\u00ADlor sit amet, con\u00ADsecte\u00ADtur adip\u00ADisc\u00ADing elit. Etiam sed tris\u00ADtique pu\u00ADrus. Sed non cur\u00ADsus tel\u00ADlus. Fusce sus\u00ADcipit blandit viver\u00ADra. Cras non sagit\u00ADtis ur\u00ADna. Donec ali\u00ADquet ve\u00ADne\u00ADnatis odio, et eu\u00ADis\u00ADmod nunc eleifend feu\u00ADgiat. Proin vo\u00ADlut\u00ADpat lec\u00ADtus non eges\u00ADtas tin\u00ADcidunt. Sus\u00ADpendisse tin\u00ADcidunt eges\u00ADtas laoreet. Nunc et sapien con\u00ADse\u00ADquat, vestibu\u00ADlum eros sit amet, blandit sapi\u00ADen. Sus\u00ADpendisse a im\u00ADperdiet elit. Nam ornare vi\u00ADtae nulla sit amet ef\u00ADfici\u00ADtur. Donec ia\u00ADc\u00ADulis au\u00ADgue sit amet nibh mo\u00ADlestie dapibus." };
 
-    constexpr int w = 200, h = 600;
+    constexpr int w = 500, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
@@ -587,7 +559,7 @@ int main(int argc, char** argv)
 
     const std::string text = texts[0];
     std::string previousText = text;
-    #if 0
+    #if 1
     // TODO: wp-semantics
     auto Layout = [&paraBuilder, &text, &previousText](SkCanvas* canvas, int w, int h) {
         paraBuilder->Reset();
@@ -599,7 +571,7 @@ int main(int argc, char** argv)
 
         std::vector<HyphenData> hyphens = {};
 
-        FindAllSoftAndHardBreaks(paragraphImpl, hyphens, previousText, w);
+        FindAllSoftAndHardBreaks(paragraphImpl, paraBuilder.get(), hyphens, previousText, w);
 
         const std::string hyphenedText = ConvertSoftBreaks(hyphens, previousText);
 
@@ -651,4 +623,4 @@ int main(int argc, char** argv)
 }
 
 
-//sdfass df d ssdfassf saff
+//sdfassd
