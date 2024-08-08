@@ -1877,7 +1877,7 @@ void ParagraphImpl::layoutWithHyphens(int w) {
     // TODO: Remove this in future
     Pre(!this->fText.isEmpty());
 
-    std::string hyphenedText{this->fText.data()};
+    std::string hyphenedText = this->fPreviousText;
 
     this->fBuilder->Reset();
     this->fBuilder->addText(this->fPreviousText.c_str(), this->fPreviousText.size());
