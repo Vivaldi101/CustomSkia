@@ -191,7 +191,7 @@ static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphI
         const auto postBoundaryNumber = paragraphImpl->getLineNumberAt(postIndex);
         bool isBreak = (preBoundaryNumber != postBoundaryNumber);
 
-        if (data.isSoftHyphen && isBreak) {
+        if (0) {
             // Measure up to but not including the soft-hyphen
             SkScalar widthBefore = font.measureText(text.c_str(), data.hyphenIndex, SkTextEncoding::kUTF8);
             SkString hyphen("-");
@@ -559,7 +559,7 @@ int main(int argc, char** argv)
 
     const std::string text = texts[0];
     std::string previousText = text;
-    #if 1
+    #if 0
     // TODO: wp-semantics
     auto Layout = [&paraBuilder, &text, &previousText](SkCanvas* canvas, int w, int h) {
         paraBuilder->Reset();
@@ -585,9 +585,8 @@ int main(int argc, char** argv)
         paragraph->paint(canvas, 0, 0);
     };
     #else
+    paraBuilder->addText(text.c_str());
     auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
-        paraBuilder->Reset();
-        paraBuilder->addText(text.c_str());
         auto paragraph = paraBuilder->Build();
         paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
@@ -623,4 +622,4 @@ int main(int argc, char** argv)
 }
 
 
-//sdfassd
+//s sfd sfdsfsdsfsdf

@@ -325,6 +325,7 @@ ParagraphImpl::ParagraphImpl(const SkString& text,
         , fPicture(nullptr)
         , fStrutMetrics(false)
         , fOldWidth(0)
+        , fOldLayoutWidth(0)
         , fOldHeight(0)
         , fUnicode(std::move(unicode))
         , fHasLineBreaks(false)
@@ -376,9 +377,11 @@ void ParagraphImpl::addUnresolvedCodepoints(TextRange textRange) {
     );
 }
 
-void ParagraphImpl::shapeLayout(SkScalar floorWidth) {
+void ParagraphImpl::shapeLayout(SkScalar floorWidth, size_t textSize) {
     this->fRuns.clear();
     this->fClusters.clear();
+    this->fClustersIndexFromCodeUnit.clear();
+    this->fClustersIndexFromCodeUnit.push_back_n(textSize + 1, EMPTY_INDEX);
     shapeTextIntoEndlessLine();
     fState = kShaped;
 }
@@ -484,7 +487,7 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
         fMaxIntrinsicWidth = fMinIntrinsicWidth;
     }
 
-    //layoutWithHyphens(rawWidth);
+    layoutWithHyphens(floorWidth);
 }
 
 void ParagraphImpl::paint(SkCanvas* canvas, SkScalar x, SkScalar y) {
@@ -1869,32 +1872,42 @@ bool ParagraphImpl::containsColorFontOrBitmap(SkTextBlob* textBlob) {
 
 void ParagraphImpl::layoutWithHyphens(int w) {
     Pre(this->fBuilder);
-    Pre(!fPreviousText.empty());
     Pre(w > 0);
+
+    // TODO: Remove this in future
+    Pre(!this->fText.isEmpty());
+
+    std::string hyphenedText{this->fText.data()};
 
     this->fBuilder->Reset();
     this->fBuilder->addText(this->fPreviousText.c_str(), this->fPreviousText.size());
 
-    this->shapeLayout(w);
-    this->breakShapedTextIntoLines(w);
+    // TODO: Do not do this during the first pass either
+    if (w != this->fOldLayoutWidth) {
+        Pre(w != this->fOldLayoutWidth);
+        this->fOldLayoutWidth = w;
+        this->layout(w);
 
-    std::vector<HyphenData> hyphens = {};
+        std::vector<HyphenData> hyphens = {};
 
-    FindAllSoftAndHardBreaks(this, hyphens, this->fPreviousText, w);
+        FindAllSoftAndHardBreaks(this, hyphens, this->fPreviousText, w);
 
-    const std::string hyphenedText = ConvertSoftBreaks(hyphens, this->fPreviousText);
+        hyphenedText = ConvertSoftBreaks(hyphens, this->fPreviousText);
 
-    this->fPreviousText = hyphenedText;
+        this->fPreviousText = hyphenedText;
 
-    this->fBuilder->Reset();
-    this->fBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
-    this->shapeLayout(w);
+        this->fBuilder->Reset();
+        this->fBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
+
+        Pre(this->fOldLayoutWidth == w);
+        this->layout(w);
+    }
 
     fText = SkString{ hyphenedText };
+    Post(fText == SkString{ hyphenedText });
 
-    this->breakShapedTextIntoLines(w);
-
-    Post(fText == SkString{hyphenedText});
+    this->fOldLayoutWidth = w;
+    Post(this->fOldLayoutWidth == w);
 }
 
 }  // namespace textlayout

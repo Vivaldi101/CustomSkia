@@ -107,7 +107,7 @@ public:
     ~ParagraphImpl() override;
 
     void layout(SkScalar rawWidth) override;
-    void shapeLayout(SkScalar floorWidth);
+    void shapeLayout(SkScalar floorWidth, size_t textSize);
     void paint(SkCanvas* canvas, SkScalar x, SkScalar y) override;
     void paint(ParagraphPainter* canvas, SkScalar x, SkScalar y) override;
     std::vector<TextBox> getRectsForRange(unsigned start,
@@ -303,6 +303,7 @@ private:
     InternalLineMetrics fStrutMetrics;
 
     SkScalar fOldWidth;
+    SkScalar fOldLayoutWidth;
     SkScalar fOldHeight;
     SkScalar fMaxWidthWithTrailingSpaces;
 
