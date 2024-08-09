@@ -1435,6 +1435,15 @@ TextIndex ParagraphImpl::findPreviousGraphemeBoundary(TextIndex utf8) const {
     return utf8;
 }
 
+TextIndex ParagraphImpl::findPreviousSoftbreakBoundary(TextIndex utf8) const {
+    const auto mask = SkUnicode::CodeUnitFlags::kSoftLineBreakBefore;
+    while (utf8 > 0 &&
+          (fCodeUnitProperties[utf8] & mask) == 0) {
+        --utf8;
+    }
+    return utf8;
+}
+
 TextIndex ParagraphImpl::findNextSoftbreakBoundary(TextIndex utf8) const {
     const auto mask = SkUnicode::CodeUnitFlags::kSoftLineBreakBefore;
     while (utf8 < fText.size() &&

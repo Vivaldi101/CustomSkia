@@ -178,6 +178,13 @@ static bool IsValidHyphenIndex(size_t index) {
     return index != skia::textlayout::EMPTY_INDEX;
 }
 
+static SkScalar GetTextPixelLength(const char* text, size_t textSize)
+{
+    const SkFont font = ToolUtils::DefaultFont();
+
+    return font.measureText(text, textSize, SkTextEncoding::kUTF8);
+}
+
 static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphImpl, skia::textlayout::ParagraphBuilder* paraBuilder, std::vector<HyphenData>& hyphens, const std::string& text, const int layoutWidth) {
     const SkFont font = ToolUtils::DefaultFont();
     HyphenData data = {};
@@ -191,9 +198,20 @@ static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphI
         const auto postBoundaryNumber = paragraphImpl->getLineNumberAt(postIndex);
         bool isBreak = (preBoundaryNumber != postBoundaryNumber);
 
-        if (0) {
+        size_t lineBegin = 0;
+        if (data.isSoftHyphen) {
+            lineBegin = paragraphImpl->findPreviousSoftbreakBoundary(preIndex);
+        }
+        else {
+            lineBegin = paragraphImpl->findPreviousSoftbreakBoundary(postIndex);
+        }
+
+        // post index returns as linebegin 
+
+        #if 0
+        if (isBreak && data.isSoftHyphen) {
             // Measure up to but not including the soft-hyphen
-            SkScalar widthBefore = font.measureText(text.c_str(), data.hyphenIndex, SkTextEncoding::kUTF8);
+            SkScalar widthBefore = font.measureText(text.c_str() + beginIndex, data.hyphenIndex, SkTextEncoding::kUTF8);
             SkString hyphen("-");
             // Measure the hyphen
             SkScalar widthHyphen = font.measureText(hyphen.c_str(), hyphen.size(), SkTextEncoding::kUTF8);
@@ -202,6 +220,17 @@ static void FindAllSoftAndHardBreaks(skia::textlayout::ParagraphImpl* paragraphI
 
             isBreak = (totalWidthWithHyphen < layoutWidth);
         }
+        else if (isBreak && !data.isSoftHyphen) {
+            SkScalar widthBefore = font.measureText(text.c_str() + beginIndex, data.hyphenIndex+1, SkTextEncoding::kUTF8);
+            isBreak = (widthBefore < layoutWidth);
+
+            Post(widthBefore < layoutWidth);
+        }
+        #endif
+
+        DebugMessage("Line begin index: %d\n", (int)lineBegin);
+
+        //const auto textSize = GetTextPixelLength(text.c_str() + preIndex, postIndex - preIndex);
 
         data.isBreak = isBreak;
         data.hyphenIndex = preIndex;
