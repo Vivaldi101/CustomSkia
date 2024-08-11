@@ -602,7 +602,6 @@ int main(int argc, char** argv)
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
     const std::string text{texts[0]};
-    //std::string hardHyphened = text;
     // TODO: wp-semantics
     auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
         bool isBreak = false;
