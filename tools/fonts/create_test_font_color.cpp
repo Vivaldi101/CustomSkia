@@ -102,10 +102,12 @@ std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units, cons
     utf8String.resize(utf8String.size() + hyphenIndexes.size());
 
     for (size_t i = 0; i < hyphenIndexes.size(); ++i) {
-        const auto shiftIndex = hyphenIndexes[i];
+        const auto inputHyphenIndex = hyphenIndexes[i] + i;
 
-        memcpy(utf8String.data() + shiftIndex + 1, utf8 + shiftIndex, utf8Units - shiftIndex);
-        memcpy(utf8String.data() + shiftIndex, hardHyphen, 3);
+        // Shift everything up from the index by one
+        memcpy(utf8String.data() + inputHyphenIndex + 1, utf8 + (inputHyphenIndex - i), utf8Units - (inputHyphenIndex - i));
+        // Copy the utf8 bytes
+        memcpy(utf8String.data() + inputHyphenIndex, hardHyphen, 3);
     }
 
     return utf8String;
@@ -583,11 +585,11 @@ int main(int argc, char** argv)
     style.setReplaceTabCharacters(true);
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
-    const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
-    //const char* texts[] = {"FirstWord  foooooooooo\u00ADtttt asdfoooooooooo bar Hyphen."};
-    //const char* texts[] = {"Softttttttttttttt\u00ADtttttttttttttt asdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
+    //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
+    //const char* texts[] = {"FirstWord  fooooooooooasd\u00ADtttt asdfoooooooooo bar Hyphen."};
+    const char* texts[] = {"Softttttttttttttt\u00ADtttttttttttttt asdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
 
-    constexpr int w = 100, h = 600;
+    constexpr int w = 800, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
@@ -605,8 +607,6 @@ int main(int argc, char** argv)
     auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
         bool isBreak = false;
 
-        auto softHyphenIndexes = FindSoftHyphens(text.c_str(), text.size());
-
         paraBuilder->Reset();
         paraBuilder->addText(text.c_str(), text.size());
 
@@ -614,10 +614,10 @@ int main(int argc, char** argv)
         paragraph->layout(w);
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
 
-        const auto softBreaks = SoftBreakHyphens(paragraphImpl, softHyphenIndexes);
+        const auto softBreaks = SoftBreakHyphens(paragraphImpl, FindSoftHyphens(text.c_str(), text.size()));
 
         std::string hyphenedText = text;
-        if (!softHyphenIndexes.empty()) {
+        if (!softBreaks.empty()) {
             hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size(), softBreaks);
         }
 
