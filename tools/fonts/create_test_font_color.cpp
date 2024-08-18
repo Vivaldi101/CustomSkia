@@ -35,6 +35,7 @@
 #include "modules/skparagraph/include/TextStyle.h"
 #include <cmath>
 #include <cassert>
+#include <algorithm>
 
 #include <Windows.h>
 #include <timeapi.h>
@@ -73,6 +74,10 @@ bool isValidSoftHyphen(const char* text, size_t index) {
     return (uint8_t)text[index] == softHyphen[0] && (uint8_t)text[index + 1] == softHyphen[1];
 }
 
+bool isValidHardHyphen(const char* text, size_t index) {
+    return (uint8_t)text[index] == hardHyphen[0] && (uint8_t)text[index + 1] == hardHyphen[1] && (uint8_t)text[index + 2] == hardHyphen[2];
+}
+
 // Semantic compress the functions
 std::vector<size_t> FindSoftHyphens(const char utf8[], size_t utf8Units)
 {
@@ -96,13 +101,16 @@ std::vector<size_t> FindSoftHyphens(const char utf8[], size_t utf8Units)
 }
 
 // TODO: Harden indexing with wp-semantics
-// TODO: Two indexes: one for the input hyphens, the other for the utf8string index which needs to be shifted by index i
-std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units, const std::vector<size_t>& hyphenIndexes) {
+// TODO: Replace hard with softs with those hyphens that are in hyphens but not in softbreaks
+std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units, const std::vector<size_t>& softBreaks, const std::vector<size_t>& hyphens) {
     std::string utf8String{ utf8 };
-    utf8String.resize(utf8String.size() + hyphenIndexes.size());
+    utf8String.resize(utf8String.size() + softBreaks.size());
 
-    for (size_t i = 0; i < hyphenIndexes.size(); ++i) {
-        const auto inputHyphenIndex = hyphenIndexes[i] + i;
+    for (size_t i = 0; i < softBreaks.size(); ++i) {
+        if (!isValidSoftHyphen(utf8String.c_str(), softBreaks[i])) {
+            continue;
+        }
+        const auto inputHyphenIndex = softBreaks[i] + i;
 
         // Shift everything up from the index by one
         memcpy(utf8String.data() + inputHyphenIndex + 1, utf8 + (inputHyphenIndex - i), utf8Units - (inputHyphenIndex - i));
@@ -113,7 +121,27 @@ std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units, cons
     return utf8String;
 }
 
-std::vector<size_t> SoftBreakHyphens(const skia::textlayout::ParagraphImpl* paragraphImpl, const std::vector<size_t>& hyphenIndexes) {
+// TODO: Harden indexing with wp-semantics
+std::string ReplaceHardHyphensWithSoft(const char utf8[], size_t utf8Units, const std::vector<size_t>& hyphenIndexes) {
+    std::string utf8String{ utf8 };
+
+    for (size_t i = 0; i < hyphenIndexes.size(); ++i) {
+        if (!isValidHardHyphen(utf8String.c_str(), hyphenIndexes[i])) {
+            continue;
+        }
+        const auto inputHyphenIndex = hyphenIndexes[i] + i;
+
+        // Shift everything up from the index by one
+        memcpy(utf8String.data() + inputHyphenIndex, utf8 + (inputHyphenIndex - i) + 1, utf8Units - (inputHyphenIndex - i) - 1);
+        // Copy the utf8 bytes
+        memcpy(utf8String.data() + inputHyphenIndex, softHyphen, 2);
+    }
+
+    return utf8String;
+}
+
+std::vector<size_t> SoftBreakHyphens(const skia::textlayout::Paragraph* paragraph, const std::vector<size_t>& hyphenIndexes) {
+    const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph);
     std::vector<size_t> softBreaks;
     size_t softBreakCount = 0;
 
@@ -134,15 +162,38 @@ std::vector<size_t> SoftBreakHyphens(const skia::textlayout::ParagraphImpl* para
 
     return softBreaks;
 }
+
+std::vector<size_t> HardBreakHyphens(const skia::textlayout::Paragraph* paragraph, const std::vector<size_t>& hyphenIndexes) {
+    const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph);
+    std::vector<size_t> hardBreaks;
+    size_t softBreakCount = 0;
+
+    for (size_t i = 0; i < hyphenIndexes.size(); ++i) {
+        const auto softHyphenIndex = hyphenIndexes[i];
+
+        const auto softBoundary = paragraphImpl->findNextControlbreakBoundary(softHyphenIndex);
+
+        const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(softHyphenIndex);
+        const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(softBoundary);
+
+        const bool isBreak = preSoftBoundaryNumber != postSoftBoundaryNumber;
+
+        if (!isBreak) {
+            hardBreaks.push_back(softHyphenIndex);
+        }
+    }
+
+    return hardBreaks;
+}
 }
 
 // TODO: Harden indexing with wp-semantics
 // TODO: Currently only replaces the first occurence
-#if 0
-static std::string ReplaceHardHyphensWithSoft(const char utf8[], size_t utf8Units, std::vector<size_t> hyphenIndexes) {
+#if 1
+static std::string ReplaceHardHyphenWithSoft(const char utf8[], size_t utf8Units, size_t shiftIndex) {
     std::string utf8String{utf8};
 
-    const auto shiftIndex = utf8String.find(hardHyphen[0]);
+    //const auto shiftIndex = utf8String.find(hardHyphen[0]);
     if (shiftIndex == utf8String.npos || (uint8_t)utf8String[shiftIndex + 1] != hardHyphen[1] ||
         (uint8_t)utf8String[shiftIndex + 2] != hardHyphen[2])
         return utf8String;
@@ -603,27 +654,21 @@ int main(int argc, char** argv)
 
     const std::string text{texts[0]};
     // TODO: wp-semantics
-    auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
-        bool isBreak = false;
+    std::string hyphenedText = text;
 
-        paraBuilder->Reset();
-        paraBuilder->addText(text.c_str(), text.size());
-
-        auto paragraph = paraBuilder->Build();
-        paragraph->layout(w);
-        const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
-
-        const auto softBreaks = SoftBreakHyphens(paragraphImpl, FindSoftHyphens(text.c_str(), text.size()));
-
-        std::string hyphenedText = text;
-        if (!softBreaks.empty()) {
-            hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size(), softBreaks);
-        }
-
-        // Finally add the hyphened text
+    auto Layout = [&paraBuilder, &hyphenedText, &text](SkCanvas* canvas, int w, int h) {
         paraBuilder->Reset();
         paraBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
-        paragraph = paraBuilder->Build();
+        const auto paragraph = paraBuilder->Build();
+        paragraph->layout(w);
+
+        auto softHyphens = FindSoftHyphens(hyphenedText.c_str(), hyphenedText.size());
+        auto softBreaks = SoftBreakHyphens(paragraph.get(), softHyphens);
+        hyphenedText = ReplaceSoftHyphensWithHard(hyphenedText.c_str(), hyphenedText.size(), softBreaks, softHyphens);
+
+        paraBuilder->Reset();
+        paraBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
+        // Finally add the hyphened text
         paragraph->layout(w);
         paragraph->paint(canvas, 0, 0);
     };
@@ -657,4 +702,4 @@ int main(int argc, char** argv)
 }
 
 
-// ddsf asf s
+// sf asaaaaaaa
