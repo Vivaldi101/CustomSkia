@@ -27,6 +27,7 @@
 #include <cfloat>
 #include <cmath>
 #include <utility>
+#include <cassert>
 
 void DebugMessage(const char* format, ...);
 using namespace skia_private;
@@ -1201,10 +1202,15 @@ TextIndex ParagraphImpl::findPreviousGraphemeBoundary(TextIndex utf8) const {
 
 TextIndex ParagraphImpl::findNextSoftbreakBoundary(TextIndex utf8) const {
     const auto mask = SkUnicode::CodeUnitFlags::kSoftLineBreakBefore;
-    while (utf8 < fText.size() &&
+    while (utf8 + 1 < fText.size() &&
+           utf8 + 1 < fCodeUnitProperties.size() &&
           (fCodeUnitProperties[utf8] & mask) == 0) {
         ++utf8;
     }
+
+    assert(utf8 + 1 == fText.size() || utf8 + 1 == fCodeUnitProperties.size() || (fCodeUnitProperties[utf8] & mask) != 0);
+    assert(utf8 == fText.size()-1 || utf8 == fCodeUnitProperties.size()-1 || (fCodeUnitProperties[utf8] & mask) != 0);
+
     return utf8;
 }
 
