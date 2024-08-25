@@ -113,25 +113,25 @@ std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units, cons
     return utf8String;
 }
 
-std::vector<size_t> SoftBreakHyphens(const skia::textlayout::ParagraphImpl* paragraphImpl, const std::vector<size_t>& hyphenIndexes) {
+std::vector<size_t> SoftBreakHyphens(int w, skia::textlayout::ParagraphImpl* paragraphImpl, const std::vector<size_t>& hyphenIndexes) {
     std::vector<size_t> softBreaks;
     size_t softBreakCount = 0;
 
     for (size_t i = 0; i < hyphenIndexes.size(); ++i) {
         const auto softHyphenIndex = hyphenIndexes[i];
 
-        //const auto preSoftBoundary = paragraphImpl->findPreviousGlyphClusterBoundary(softHyphenIndex);
-        //const auto postSoftBoundary = paragraphImpl->findNextGlyphClusterBoundary(softHyphenIndex+1);
-        //const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preSoftBoundary);
-        //const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(postSoftBoundary);
-
-        const auto startIndex = paragraphImpl->findPreviousGraphemeBoundary(softHyphenIndex);
-        const auto endIndex = paragraphImpl->findNextGraphemeBoundary(softHyphenIndex + 1);
+        const auto preSoftBoundary = paragraphImpl->findPreviousGlyphClusterBoundary(softHyphenIndex);
+        const auto postSoftBoundary = paragraphImpl->findNextGlyphClusterBoundary(softHyphenIndex+1);
+        const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preSoftBoundary);
+        const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(postSoftBoundary);
 
         std::vector<skia::textlayout::TextBox> boxes;
-        skia::textlayout::getRectsForRange({ startIndex, endIndex }, skia::textlayout::RectHeightStyle::kTight, skia::textlayout::RectWidthStyle::kTight, boxes);
+        boxes = paragraphImpl->getRectsForRange(preSoftBoundary, postSoftBoundary, skia::textlayout::RectHeightStyle::kTight, skia::textlayout::RectWidthStyle::kTight);
 
-        const bool isBreak = preSoftBoundaryNumber != postSoftBoundaryNumber;
+        const float boxWidth = boxes[boxes.size()-1].rect.width();
+        skia::textlayout::LineMetrics metrics;
+        paragraphImpl->getLineMetricsAt(preSoftBoundaryNumber, &metrics);
+        const bool isBreak = (metrics.fWidth + 5.0f <= w) && (preSoftBoundaryNumber != postSoftBoundaryNumber);
 
         if (isBreak) {
             softBreaks.push_back(softHyphenIndex);
@@ -592,10 +592,10 @@ int main(int argc, char** argv)
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
-    //const char* texts[] = {"FirstWord  fooooooooooasd\u00ADtttt asdfoooooooooo bar Hyphen."};
-    const char* texts[] = {"Softttttttttttttt\u00ADtttttttttttttt asdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
+    const char* texts[] = {"FirstWord  fooooooooooasd\u00ADtttt asdfoooooooooo bar Hyphen."};
+    //const char* texts[] = {"Softttttttttttttt\u00ADtttttttttttttt asdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
 
-    constexpr int w = 485, h = 600;
+    constexpr int w = 484, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
@@ -607,7 +607,7 @@ int main(int argc, char** argv)
 
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
-    std::string text = texts[0];
+    const std::string text = texts[0];
 
     // TODO: wp-semantics
     auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
@@ -621,7 +621,7 @@ int main(int argc, char** argv)
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
 
         const auto softHyphens = FindSoftHyphens(text.c_str(), text.size());
-        const auto softBreaks = SoftBreakHyphens(paragraphImpl, softHyphens);
+        const auto softBreaks = SoftBreakHyphens(w, paragraphImpl, softHyphens);
         std::string hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size(), softBreaks);
 
         // Finally add the hyphened text
@@ -661,4 +661,4 @@ int main(int argc, char** argv)
 }
 
 
-// daaaa
+// aaa
