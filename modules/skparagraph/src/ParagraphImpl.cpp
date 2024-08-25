@@ -316,7 +316,7 @@ ParagraphImpl::ParagraphImpl(const SkString& text,
                              TArray<Placeholder, true> placeholders,
                              sk_sp<FontCollection> fonts,
                              sk_sp<SkUnicode> unicode)
-        : Paragraph(std::move(style), fonts)
+        : Paragraph(style, fonts)
         , fTextStyles(std::move(blocks))
         , fPlaceholders(std::move(placeholders))
         , fText(text)
@@ -485,6 +485,13 @@ void ParagraphImpl::layout(SkScalar rawWidth) {
     //  that would make min > max. Sort it out later, make it the same for now
     if (fMaxIntrinsicWidth < fMinIntrinsicWidth) {
         fMaxIntrinsicWidth = fMinIntrinsicWidth;
+    }
+
+    if (fOldLayoutWidth == floorWidth) {
+        return;
+    }
+    if ((fPreviousText.find("\u2010") == fPreviousText.npos) && (fPreviousText.find("\u00AD") == fPreviousText.npos)) {
+        return;
     }
 
     layoutWithHyphens(floorWidth);
@@ -1882,41 +1889,82 @@ bool ParagraphImpl::containsColorFontOrBitmap(SkTextBlob* textBlob) {
 void ParagraphImpl::layoutWithHyphens(int w) {
     Pre(this->fBuilder);
     Pre(w > 0);
+    Pre(w != this->fOldLayoutWidth);
 
-    // TODO: Remove this in future
-    Pre(!this->fText.isEmpty());
-
-    std::string hyphenedText = this->fPreviousText;
-
-    this->fBuilder->Reset();
-    this->fBuilder->addText(this->fPreviousText.c_str(), this->fPreviousText.size());
-
-    // TODO: Do not do this during the first pass either
-    if (w != this->fOldLayoutWidth) {
-        Pre(w != this->fOldLayoutWidth);
-        this->fOldLayoutWidth = w;
-        this->layout(w);
-
-        std::vector<HyphenData> hyphens = {};
-
-        FindAllSoftAndHardBreaks(this, hyphens, this->fPreviousText, w);
-
-        hyphenedText = ConvertSoftBreaks(hyphens, this->fPreviousText);
-
-        this->fPreviousText = hyphenedText;
-
-        this->fBuilder->Reset();
-        this->fBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
-
-        Pre(this->fOldLayoutWidth == w);
-        this->layout(w);
+    if (this->fHyphensDone) {    // Base case
+        return;
     }
 
-    fText = SkString{ hyphenedText };
-    Post(fText == SkString{ hyphenedText });
-
     this->fOldLayoutWidth = w;
-    Post(this->fOldLayoutWidth == w);
+
+    std::vector<HyphenData> hyphens = {};
+
+    FindAllSoftAndHardBreaks(this, hyphens, this->fPreviousText, w);
+
+    const auto hyphenedText = ConvertSoftBreaks(hyphens, this->fPreviousText);
+
+    this->fBuilder->Reset();
+    this->fBuilder->addText(hyphenedText.c_str(), hyphenedText.size());
+    this->fPreviousText = hyphenedText;
+
+    const auto paragraph = this->fBuilder->Build();
+
+    // Single recursion level
+    static_cast<ParagraphImpl*>(paragraph.get())->setLayoutWithHyphens(true);
+    paragraph->layout(w);
+
+    setNewParagraph(static_cast<ParagraphImpl*>(paragraph.get()));
+}
+
+void ParagraphImpl::setNewParagraph(ParagraphImpl* paragraphImpl) {
+    this->fFontCollection = paragraphImpl->fFontCollection;
+    this->fParagraphStyle = paragraphImpl->fParagraphStyle;
+    this->fAlphabeticBaseline = paragraphImpl->fAlphabeticBaseline;
+    this->fIdeographicBaseline = paragraphImpl->fIdeographicBaseline;
+    this->fHeight = paragraphImpl->fHeight;
+    this->fWidth = paragraphImpl->fWidth;
+    this->fMaxIntrinsicWidth = paragraphImpl->fMaxIntrinsicWidth;
+    this->fMinIntrinsicWidth = paragraphImpl->fMinIntrinsicWidth;
+    this->fLongestLine = paragraphImpl->fLongestLine;
+    this->fExceededMaxLines = paragraphImpl->fExceededMaxLines;
+
+    this->fLetterSpaceStyles = paragraphImpl->fLetterSpaceStyles;
+    this->fWordSpaceStyles = paragraphImpl->fWordSpaceStyles;
+    this->fBackgroundStyles = paragraphImpl->fBackgroundStyles;
+    this->fForegroundStyles = paragraphImpl->fForegroundStyles;
+    this->fShadowStyles = paragraphImpl->fShadowStyles;
+    this->fDecorationStyles = paragraphImpl->fDecorationStyles;
+    this->fTextStyles = paragraphImpl->fTextStyles;
+    this->fPlaceholders = paragraphImpl->fPlaceholders;
+    this->fText = paragraphImpl->fText;
+
+    this->fState = paragraphImpl->fState;
+    this->fRuns = paragraphImpl->fRuns;
+    this->fClusters = paragraphImpl->fClusters;
+    this->fCodeUnitProperties = paragraphImpl->fCodeUnitProperties;
+    this->fClustersIndexFromCodeUnit = paragraphImpl->fClustersIndexFromCodeUnit;
+
+    this->fWords = paragraphImpl->fWords;
+    this->fBidiRegions = paragraphImpl->fBidiRegions;
+
+    this->fUTF8IndexForUTF16Index = paragraphImpl->fUTF8IndexForUTF16Index;
+    this->fUTF16IndexForUTF8Index = paragraphImpl->fUTF16IndexForUTF8Index;
+    this->fUnresolvedGlyphs = paragraphImpl->fUnresolvedGlyphs;
+    this->fUnresolvedCodepoints = paragraphImpl->fUnresolvedCodepoints;
+
+    this->fPicture = paragraphImpl->fPicture;
+    this->fFontSwitches = paragraphImpl->fFontSwitches;
+    this->fEmptyMetrics = paragraphImpl->fEmptyMetrics;
+    this->fStrutMetrics = paragraphImpl->fStrutMetrics;
+
+    this->fOldWidth = paragraphImpl->fOldWidth;
+    this->fOldHeight = paragraphImpl->fOldHeight;
+    this->fMaxWidthWithTrailingSpaces = paragraphImpl->fMaxWidthWithTrailingSpaces;
+
+    this->fUnicode = paragraphImpl->fUnicode;
+    this->fHasLineBreaks = paragraphImpl->fHasLineBreaks;
+    this->fHasWhitespacesInside = paragraphImpl->fHasWhitespacesInside;
+    this->fTrailingSpaces = paragraphImpl->fTrailingSpaces;
 }
 
 }  // namespace textlayout

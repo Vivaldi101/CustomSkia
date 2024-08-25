@@ -267,6 +267,8 @@ private:
 
     void computeEmptyMetrics();
     void layoutWithHyphens(int w);
+    void setLayoutWithHyphens(bool toggle) { fHyphensDone = toggle; }
+    void setNewParagraph(ParagraphImpl* paragraphImpl);
 
     // Input
     skia_private::TArray<StyleBlock<SkScalar>> fLetterSpaceStyles;
@@ -312,10 +314,10 @@ private:
     bool fHasWordBreaks;
     bool fHasLineBreaks;
     bool fHasWhitespacesInside;
+    bool fHyphensDone;
     TextIndex fTrailingSpaces;
     std::string fPreviousText;
 
-    // TODO: sk_sp?
     std::unique_ptr<ParagraphBuilder> fBuilder;
 };
 }  // namespace textlayout
