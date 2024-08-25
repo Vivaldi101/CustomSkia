@@ -125,10 +125,6 @@ std::vector<size_t> SoftBreakHyphens(int w, skia::textlayout::ParagraphImpl* par
         const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(preSoftBoundary);
         const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(postSoftBoundary);
 
-        std::vector<skia::textlayout::TextBox> boxes;
-        boxes = paragraphImpl->getRectsForRange(preSoftBoundary, postSoftBoundary, skia::textlayout::RectHeightStyle::kTight, skia::textlayout::RectWidthStyle::kTight);
-
-        const float boxWidth = boxes[boxes.size()-1].rect.width();
         skia::textlayout::LineMetrics metrics;
         paragraphImpl->getLineMetricsAt(preSoftBoundaryNumber, &metrics);
         const bool isBreak = (metrics.fWidth + 5.0f <= w) && (preSoftBoundaryNumber != postSoftBoundaryNumber);
@@ -592,8 +588,8 @@ int main(int argc, char** argv)
     auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
-    const char* texts[] = {"FirstWord  fooooooooooasd\u00ADtttt asdfoooooooooo bar Hyphen."};
-    //const char* texts[] = {"Softttttttttttttt\u00ADtttttttttttttt asdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
+    //const char* texts[] = {"FirstWord  fooooooooooasd\u00ADtttt asdfoooooooooo bar Hyphen."};
+    const char* texts[] = {"Softttttttttttttt\u00ADtttttttttttttt asdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
 
     constexpr int w = 484, h = 600;
     RECT windowRectangle = {0, 0, w, h};
