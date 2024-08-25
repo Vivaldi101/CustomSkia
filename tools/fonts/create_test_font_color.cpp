@@ -64,6 +64,15 @@ namespace
 constexpr uint8_t softHyphen[2] = { 0xC2, 0xAD };
 constexpr uint8_t hardHyphen[3] = { 0xE2, 0x80, 0x90 };
 
+float getHyphenPixelWidth(float fontSize) {
+    sk_sp<SkTypeface> typeface = ToolUtils::DefaultPortableTypeface();
+    const SkFont font{typeface, fontSize};
+    SkRect bounds;
+    const SkScalar width = font.measureText("-", 1, SkTextEncoding::kUTF8, &bounds);
+
+    return width;
+}
+
 bool isValidHyphenIndex(size_t index) {
     return index != skia::textlayout::EMPTY_INDEX;
 }
@@ -113,9 +122,9 @@ std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units, cons
     return utf8String;
 }
 
-std::vector<size_t> SoftBreakHyphens(int w, skia::textlayout::ParagraphImpl* paragraphImpl, const std::vector<size_t>& hyphenIndexes) {
+std::vector<size_t> SoftBreakHyphens(int w, float fontSize, skia::textlayout::ParagraphImpl* paragraphImpl, const std::vector<size_t>& hyphenIndexes) {
     std::vector<size_t> softBreaks;
-    size_t softBreakCount = 0;
+    const auto hyphenPixelWidth = getHyphenPixelWidth(fontSize);
 
     for (size_t i = 0; i < hyphenIndexes.size(); ++i) {
         const auto softHyphenIndex = hyphenIndexes[i];
@@ -127,7 +136,7 @@ std::vector<size_t> SoftBreakHyphens(int w, skia::textlayout::ParagraphImpl* par
 
         skia::textlayout::LineMetrics metrics;
         paragraphImpl->getLineMetricsAt(preSoftBoundaryNumber, &metrics);
-        const bool isBreak = (metrics.fWidth + 5.0f <= w) && (preSoftBoundaryNumber != postSoftBoundaryNumber);
+        const bool isBreak = ((int)(metrics.fWidth + 0.5f) + (int)(hyphenPixelWidth + 0.5f) < w) && (preSoftBoundaryNumber != postSoftBoundaryNumber);
 
         if (isBreak) {
             softBreaks.push_back(softHyphenIndex);
@@ -137,33 +146,6 @@ std::vector<size_t> SoftBreakHyphens(int w, skia::textlayout::ParagraphImpl* par
     return softBreaks;
 }
 }
-
-// TODO: Harden indexing with wp-semantics
-// TODO: Currently only replaces the first occurence
-#if 0
-static std::string ReplaceHardHyphensWithSoft(const char utf8[], size_t utf8Units, std::vector<size_t> hyphenIndexes) {
-    std::string utf8String{utf8};
-
-    const auto shiftIndex = utf8String.find(hardHyphen[0]);
-    if (shiftIndex == utf8String.npos || (uint8_t)utf8String[shiftIndex + 1] != hardHyphen[1] ||
-        (uint8_t)utf8String[shiftIndex + 2] != hardHyphen[2])
-        return utf8String;
-
-    memcpy(utf8String.data() + shiftIndex, utf8 + shiftIndex + 1, utf8Units - shiftIndex - 1);
-    memcpy(utf8String.data() + shiftIndex, softHyphen, 2);
-
-    utf8String.erase(utf8String.end()-1);
-
-    return utf8String;
-}
-#endif
-
-static void drawTextWithSoftHyphen(SkCanvas* canvas,
-                            const char* text,
-                            float x,
-                            float y,
-                            const SkPaint& paint,
-                            const SkFont& font);
 
 void DebugMessage(const char* format, ...) 
 {
@@ -556,20 +538,6 @@ static int WaitForFrame()
     return num_frames_to_run;
 }
 
-static bool doSoftBreak(skia::textlayout::ParagraphImpl* paragraphImpl, size_t softHyphenIndex) {
-    assert(paragraphImpl);
-    assert(isValidHyphenIndex(softHyphenIndex));
-
-    const auto softBoundary = paragraphImpl->findNextSoftbreakBoundary(softHyphenIndex);
-
-    const auto preSoftBoundaryNumber = paragraphImpl->getLineNumberAt(softHyphenIndex);
-    const auto postSoftBoundaryNumber = paragraphImpl->getLineNumberAt(softBoundary);
-
-    bool isBreak = preSoftBoundaryNumber != postSoftBoundaryNumber;
-
-    return isBreak;
-}
-
 int main(int argc, char** argv) 
 {
 	timeBeginPeriod(1);
@@ -580,16 +548,16 @@ int main(int argc, char** argv)
     if (!data.mainFiber || !data.msgFiber) return -1;
 
     sk_sp<skia::textlayout::FontCollection> fontCollection = sk_make_sp<skia::textlayout::FontCollection>();
-    fontCollection->setDefaultFontManager(ToolUtils::TestFontMgr());
+    const auto fontManager = ToolUtils::TestFontMgr();
+    fontCollection->setDefaultFontManager(fontManager);
 
     // Add hyphening into paragraphstyle?
-    skia::textlayout::ParagraphStyle style{};
-    style.setReplaceTabCharacters(true);
-    auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(style, fontCollection);
+    skia::textlayout::ParagraphStyle pstyle{};
+    auto paraBuilder = skia::textlayout::ParagraphBuilderImpl::make(pstyle, fontCollection);
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
     //const char* texts[] = {"FirstWord  fooooooooooasd\u00ADtttt asdfoooooooooo bar Hyphen."};
-    const char* texts[] = {"Softttttttttttttt\u00ADtttttttttttttt asdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
+    const char* texts[] = {"Softttttttttttttt\u00ADttttttttttttttasdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
 
     constexpr int w = 484, h = 600;
     RECT windowRectangle = {0, 0, w, h};
@@ -604,9 +572,11 @@ int main(int argc, char** argv)
     SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&data);
 
     const std::string text = texts[0];
+    const auto paraStyle = paraBuilder->getParagraphStyle();
+    const auto fontSize = paraStyle.getStrutStyle().getFontSize();
 
     // TODO: wp-semantics
-    auto Layout = [&paraBuilder, &text](SkCanvas* canvas, int w, int h) {
+    auto Layout = [&paraBuilder, &text, &fontSize](SkCanvas* canvas, int w) {
         bool isBreak = false;
 
         paraBuilder->Reset();
@@ -617,7 +587,7 @@ int main(int argc, char** argv)
         const auto paragraphImpl = (skia::textlayout::ParagraphImpl*)(paragraph.get());
 
         const auto softHyphens = FindSoftHyphens(text.c_str(), text.size());
-        const auto softBreaks = SoftBreakHyphens(w, paragraphImpl, softHyphens);
+        const auto softBreaks = SoftBreakHyphens(w, fontSize, paragraphImpl, softHyphens);
         std::string hyphenedText = ReplaceSoftHyphensWithHard(text.c_str(), text.size(), softBreaks);
 
         // Finally add the hyphened text
@@ -633,21 +603,13 @@ int main(int argc, char** argv)
     while (!data.isQuit) 
     {
 		PullFiberState(&data);
-
         const Area winArea = GetClientWindowArea(window);
-
         auto canvas = ResizeFrameBuffer(winArea.width, winArea.height);
-
         if (!canvas) continue;
-
         ClearFrameBuffers(canvas.get(), SkColors::kDkGray);
-
-        Layout(canvas.get(), winArea.width, winArea.height);
-
+        Layout(canvas.get(), winArea.width);
         const int framesToRun = WaitForFrame();
-
         SwapFrameBuffers(window);
-
         PushFiberState(&data);
     }
 
@@ -657,4 +619,4 @@ int main(int argc, char** argv)
 }
 
 
-// aaa
+// aaaaaaaaa
