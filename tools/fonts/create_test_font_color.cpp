@@ -90,15 +90,16 @@ std::vector<size_t> FindSoftHyphens(const char utf8[], size_t utf8Units)
     size_t offset = 0;
     size_t index = skia::textlayout::EMPTY_INDEX;
 
-    while (isValidHyphenIndex(index = utf8String.find(softHyphen[0], offset))) {
+    while ((index = utf8String.find(softHyphen[0], offset)) != std::string::npos) {
         if ((uint8_t)utf8String[index + 1] != softHyphen[1]) {
+            offset = index + 1;
             continue;
         }
 
         assert(isValidHyphenIndex(index) && isValidSoftHyphen(utf8, index));
         result.push_back(index);
 
-        offset += (index + ArrayCount(softHyphen));
+        offset = index + ArrayCount(softHyphen);    // Skip this hyphen and start searching for a new one
     }
 
     return result;
@@ -557,9 +558,10 @@ int main(int argc, char** argv)
 
     //const char* texts[] = {"Soft\u00ADtttttttttttttttttttttttttttttttttt noHyphen."};
     //const char* texts[] = {"FirstWord  fooooooooooasd\u00ADtttt asdfoooooooooo bar Hyphen."};
-    const char* texts[] = {"Softttttttttttttt\u00ADttttttttttttttasdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
+    //const char* texts[] = {"Softttttttttttttt\u00ADttttttttttttttasdd\u00ADfootttttttttttttttttttttttttttttttttttttttttttttt asddddd\u00ADHyphennnnn."};
+    const char* texts[] = {"Lorem ip\u00ADsum do\u00ADlor sit amet, con\u00ADsecte\u00ADtur adip\u00ADisc\u00ADing elit. Pel\u00ADlen\u00ADtesque velit mag\u00ADna, eleifend et do\u00ADlor sed, fer\u00ADmen\u00ADtum ul\u00ADtri\u00ADces ex. Fusce ia\u00ADc\u00ADulis erat lec\u00ADtus, vel congue ip\u00ADsum dapibus nec. In fer\u00ADmen\u00ADtum nibh non rutrum sol\u00ADlic\u00ADi\u00ADtudin. Donec rutrum la\u00ADcus quis magna rhon\u00ADcus fer\u00ADmen\u00ADtum. Quisque vi\u00ADtae mo\u00ADlestie leo. Ut ac rutrum ris\u00ADus. Duis pul\u00ADv\u00ADinar risus et velit sus\u00ADcip\u00ADit, non con\u00ADse\u00ADquat leo rutrum. Vi\u00ADva\u00ADmus fringilla do\u00ADlor en\u00ADim, a ul\u00ADlam\u00ADcor\u00ADper ip\u00ADsum var\u00ADius quis. Nam non fe\u00ADlis at enim max\u00ADimus male\u00ADsuada quis ut nunc. Quisque fa\u00ADcil\u00ADi\u00ADsis pul\u00ADv\u00ADinar velit, vel vestibu\u00ADlum ex blandit eget. Etiam at velit mi. In hac habitasse platea dic\u00ADtumst. Sed ve\u00ADne\u00ADnatis est nec tor\u00ADtor. "};
 
-    constexpr int w = 484, h = 600;
+    constexpr int w = 800, h = 600;
     RECT windowRectangle = {0, 0, w, h};
 
     AdjustWindowRectEx(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
