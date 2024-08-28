@@ -64,6 +64,9 @@ namespace
 constexpr uint8_t softHyphen[2] = { 0xC2, 0xAD };
 constexpr uint8_t hardHyphen[3] = { 0xE2, 0x80, 0x90 };
 
+static_assert(sizeof(softHyphen) == 2 * sizeof(uint8_t));
+static_assert(sizeof(hardHyphen) == 3 * sizeof(uint8_t));
+
 float getHyphenPixelWidth(float fontSize) {
     sk_sp<SkTypeface> typeface = ToolUtils::DefaultPortableTypeface();
     const SkFont font{typeface, fontSize};
@@ -87,19 +90,12 @@ std::vector<size_t> FindSoftHyphens(const char utf8[], size_t utf8Units)
 {
     std::vector<size_t> result;
     std::string utf8String{ utf8 };
-    size_t offset = 0;
-    size_t index = skia::textlayout::EMPTY_INDEX;
 
-    while ((index = utf8String.find(softHyphen[0], offset)) != std::string::npos) {
-        if ((uint8_t)utf8String[index + 1] != softHyphen[1]) {
-            offset = index + 1;
-            continue;
+    for (size_t i = 0; i < utf8Units; ++i) {
+        if ((uint8_t)utf8String[i + 0] == softHyphen[0] && (uint8_t)utf8String[i + 1] == softHyphen[1]) {
+            result.push_back(i);
+            ++i;
         }
-
-        assert(isValidHyphenIndex(index) && isValidSoftHyphen(utf8, index));
-        result.push_back(index);
-
-        offset = index + ArrayCount(softHyphen);    // Skip this hyphen and start searching for a new one
     }
 
     return result;
@@ -114,8 +110,11 @@ std::string ReplaceSoftHyphensWithHard(const char utf8[], size_t utf8Units, cons
     for (size_t i = 0; i < hyphenIndexes.size(); ++i) {
         const auto inputHyphenIndex = hyphenIndexes[i] + i;
 
+        Pre(utf8String.data() + inputHyphenIndex + 1 + utf8Units - (inputHyphenIndex - i) <= utf8String.data() + utf8String.size());
         // Shift everything up from the index by one
         memcpy(utf8String.data() + inputHyphenIndex + 1, utf8 + (inputHyphenIndex - i), utf8Units - (inputHyphenIndex - i));
+
+        Pre(utf8String.data() + inputHyphenIndex + ArrayCount(hardHyphen)-1 < utf8String.data() + utf8String.size());
         // Copy the utf8 bytes
         memcpy(utf8String.data() + inputHyphenIndex, hardHyphen, 3);
     }
